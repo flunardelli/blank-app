@@ -4,12 +4,17 @@ export class Input {
     this.keys = new Set();
     this.dragPixels = 0;
     this.lastPointerX = null;
+    this.pressListeners = [];
 
-    window.addEventListener('keydown', (e) => this.keys.add(e.code));
+    window.addEventListener('keydown', (e) => {
+      this.keys.add(e.code);
+      if (['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD', 'Space'].includes(e.code)) this.emitPress();
+    });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     element.addEventListener('pointerdown', (e) => {
       this.lastPointerX = e.clientX;
       element.setPointerCapture(e.pointerId);
+      this.emitPress();
     });
     element.addEventListener('pointermove', (e) => {
       if (this.lastPointerX === null) return;
@@ -19,6 +24,14 @@ export class Input {
     const release = () => { this.lastPointerX = null; };
     element.addEventListener('pointerup', release);
     element.addEventListener('pointercancel', release);
+  }
+
+  onPress(listener) {
+    this.pressListeners.push(listener);
+  }
+
+  emitPress() {
+    this.pressListeners.forEach((listener) => listener());
   }
 
   keyboardAxis() {

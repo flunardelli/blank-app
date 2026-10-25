@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateLevel } from '../src/level.js';
 import { CONFIG } from '../src/config.js';
+import { isGoodGate } from '../src/rules.js';
 
 test('levels are deterministic for the same number', () => {
   assert.deepEqual(generateLevel(3), generateLevel(3));
@@ -9,23 +10,29 @@ test('levels are deterministic for the same number', () => {
 });
 
 test('level data is well formed', () => {
-  for (let n = 1; n <= 20; n++) {
+  const half = CONFIG.track.width / 2;
+  for (let n = 1; n <= 30; n++) {
     const level = generateLevel(n);
-    const half = CONFIG.track.width / 2;
-    assert.ok(level.pickups.every((p) => Math.abs(p.x) < half && p.d < level.boss.d));
-    assert.ok(level.gates.every((g) => g.left !== g.right));
-    assert.equal(new Set(level.pickups.map((p) => p.id)).size, level.pickups.length);
-    // Every wall leaves a lane open.
-    assert.ok(level.obstacles.filter((o) => o.kind === 'wall')
-      .every((w) => Math.abs(w.x) + w.halfWidth < half));
+    const ds = [...level.gates, ...level.obstacles, ...level.coins, ...level.enemies].map((e) => e.d);
+    assert.ok(ds.every((d) => d > 0 && d < level.finishD), `level ${n}: content beyond the finish line`);
+    assert.ok(level.coins.every((c) => Math.abs(c.x) < half));
+    assert.ok(level.gates.every((g) => isGoodGate(g.left) || isGoodGate(g.right)), 'every gate pair has a good side');
+    assert.ok(isGoodGate(level.gates[0].left) && isGoodGate(level.gates[0].right), 'first gate grows a 1-blob crowd');
+    // Spike pads always leave a wide enough gap for the crowd to squeeze through.
+    for (const { pads } of level.obstacles.filter((o) => o.kind === 'spikes')) {
+      const edges = [-half, ...pads.flatMap((p) => [p.x - p.halfWidth, p.x + p.halfWidth]), half].sort((a, b) => a - b);
+      const gaps = edges.filter((_, i) => i % 2 === 0).map((e, i) => edges[i * 2 + 1] - e);
+      assert.ok(Math.max(...gaps) >= CONFIG.obstacle.minSpikeGap - 1e-9, `level ${n}: spike gap too small`);
+    }
+    assert.ok(level.boss.d > level.finishD && level.ladderStart > level.boss.d);
   }
 });
 
-test('the boss is always beatable with good play, and gets harder', () => {
-  const ratios = [1, 5, 10].map((n) => {
-    const { boss, bestMass } = generateLevel(n);
-    assert.ok(boss.mass < bestMass, `level ${n}: boss ${boss.mass} >= best ${bestMass}`);
-    return boss.mass / bestMass;
+test('the boss is beatable with perfect play, and gets relatively harder', () => {
+  const ratios = [1, 5, 10, 20].map((n) => {
+    const { boss, bestCount } = generateLevel(n);
+    assert.ok(boss.hp < bestCount, `level ${n}: boss ${boss.hp} >= best ${bestCount}`);
+    return boss.hp / bestCount;
   });
-  assert.ok(ratios[0] < ratios[2]);
+  assert.ok(ratios[0] < ratios[3]);
 });

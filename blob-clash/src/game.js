@@ -1,244 +1,385 @@
-// Game state machine: ready -> running -> clash -> won | lost.
+// Game state machine: menu -> running <-> skirmish -> boss -> bonus -> complete | lost.
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
-import { Blob } from './blob.js';
+import { CONFIG, PALETTE } from './config.js';
 import { Effects } from './effects.js';
 import { generateLevel } from './level.js';
-import { buildLevelView, toZ } from './levelView.js';
+import { buildLevelView, createPlayerCrowd, toZ } from './levelView.js';
 import {
-  applyObstacleHit, applyPickup, circlesOverlap, clashRate, clashResult, clashStep,
-  gateColor, massToRadius, obstacleHits, obstacleX,
+  applyGate, bonusMultiplier, bossFightResult, bossFightStep, bossLaunchRate, chooseGate, clashRate,
+  clashStep, crossesObstacle, damageFor, melonX, rewardCoins, startBlobsFor, upgradeCost,
 } from './rules.js';
+import { loadSave, writeSave } from './save.js';
 
-const SAVE_KEY = 'blob-clash.level';
-const labelOffset = new THREE.Vector3();
-const cameraTarget = new THREE.Vector3();
-const lookTarget = new THREE.Vector3();
+const UPGRADES = [
+  { id: 'damage', title: 'Damage', icon: '🥊' },
+  { id: 'blobs', title: 'Blobs', icon: '🫧' },
+];
 
-function loadSavedLevel() {
-  try {
-    return Number(localStorage.getItem(SAVE_KEY)) || 1;
-  } catch {
-    return 1;
-  }
-}
-
-function saveLevel(level) {
-  try {
-    localStorage.setItem(SAVE_KEY, String(level));
-  } catch {
-    // storage blocked (private mode): progress just isn't remembered
-  }
-}
+const cameraGoal = new THREE.Vector3();
+const lookGoal = new THREE.Vector3();
+const lookCurrent = new THREE.Vector3();
+const bubbleAnchor = new THREE.Vector3();
+const bossChest = new THREE.Vector3();
 
 export class Game {
   constructor({ world, hud, input }) {
     this.world = world;
     this.hud = hud;
     this.input = input;
+    this.save = loadSave();
     this.effects = new Effects(world.scene);
-    this.player = new Blob('blue', massToRadius(CONFIG.player.startMass));
-    world.scene.add(this.player.group);
+    this.player = createPlayerCrowd(world.scene);
     this.time = 0;
     this.view = null;
-    this.loadLevel(loadSavedLevel());
+    input.onPress(() => {
+      if (this.state === 'menu') this.start();
+    });
+    this.loadLevel(this.save.level);
   }
 
+  // ---- Level lifecycle ----------------------------------------------------------
   loadLevel(levelNumber) {
     this.view?.dispose();
     this.effects.clear();
+    this.hud.clearBubbles();
     this.level = generateLevel(levelNumber);
     this.view = buildLevelView(this.world.scene, this.level);
 
-    this.state = 'ready';
-    this.mass = CONFIG.player.startMass;
-    this.bossMass = this.level.boss.mass;
-    this.x = 0;
-    this.d = 0;
-    this.invulnerable = 0;
+    this.state = 'menu';
     this.nextGate = 0;
-    this.remainingPickups = [...this.level.pickups];
+    this.nextEnemy = 0;
+    this.remainingCoins = [...this.level.coins];
+    this.runCoins = 0;
+    this.bossHpShown = this.level.boss.hp;
+    this.bossPunch = [0, 0];
+    this.fight = null;
 
-    this.player.setColor(this.level.startColor);
-    this.player.setRadius(massToRadius(this.mass), { instant: true });
-    this.player.group.visible = true;
-    this.player.group.position.set(0, this.player.group.position.y, 0);
-    this.view.boss.group.visible = true;
+    this.player.center = { x: 0, d: 0 };
+    this.player.units = [];
+    this.player.setCount(startBlobsFor(this.save.upgrades.blobs));
+    this.player.mood = 'idle';
 
-    this.hud.setLevel(levelNumber);
-    this.hud.showOverlay({
-      title: 'Blob Clash',
-      body: `Pass through gates to pick your colour, absorb blobs of <b>your</b> colour and dodge the rest.<br>
-             Beat the boss of <b>${this.bossMass}</b> at the end!<br><small>Drag or use ← → / A D</small>`,
-      button: 'Play',
-      onClick: () => { this.state = 'running'; },
+    this.playerBubble = this.hud.createBubble('player');
+    this.bossBubble = this.hud.createBubble('boss');
+    this.view.enemies.forEach((e) => { e.bubble = this.hud.createBubble('enemy'); });
+
+    this.snapCamera = true;
+    this.hud.setCoins(this.save.coins);
+    this.showMenu();
+  }
+
+  showMenu() {
+    const { upgrades, coins } = this.save;
+    this.hud.showMenu({
+      level: this.level.level,
+      upgrades: UPGRADES.map((u) => ({
+        ...u, level: upgrades[u.id], cost: upgradeCost(upgrades[u.id]), affordable: coins >= upgradeCost(upgrades[u.id]),
+      })),
+      onBuy: (id) => this.buyUpgrade(id),
     });
   }
 
-  get radius() {
-    return massToRadius(this.mass);
+  buyUpgrade(id) {
+    const cost = upgradeCost(this.save.upgrades[id]);
+    if (this.state !== 'menu' || this.save.coins < cost) return;
+    this.save.coins -= cost;
+    this.save.upgrades[id] += 1;
+    writeSave(this.save);
+    this.hud.setCoins(this.save.coins);
+    if (id === 'blobs') this.player.setCount(startBlobsFor(this.save.upgrades.blobs));
+    this.showMenu();
   }
 
+  start() {
+    this.state = 'running';
+    this.player.mood = 'run';
+    this.hud.hideScreens();
+  }
+
+  // ---- Frame update -------------------------------------------------------------
   update(dt) {
     this.time += dt;
     if (this.state === 'running') this.updateRunning(dt);
-    else if (this.state === 'clash') this.updateClash(dt);
+    else if (this.state === 'skirmish') this.updateSkirmish(dt);
+    else if (this.state === 'boss') this.updateBoss(dt);
 
     this.animateScene(dt);
+    this.player.update(dt, this.time);
+    this.view.enemies.forEach(({ crowd }) => crowd.update(dt, this.time));
     this.effects.update(dt);
     this.updateCamera(dt);
     this.updateHud();
   }
 
   updateRunning(dt) {
-    const previousD = this.d;
-    const { forwardSpeed } = CONFIG.player;
-    const { squeezeFactor } = CONFIG.blob;
-    const coreRadius = this.radius * squeezeFactor;
-    const halfWidth = CONFIG.track.width / 2 - coreRadius;
+    const { player } = this;
+    const { forwardSpeed } = CONFIG.crowd;
+    const maxX = Math.max(0, CONFIG.track.width / 2 - player.radius);
+    player.center.d += forwardSpeed * dt;
+    player.center.x = THREE.MathUtils.clamp(player.center.x + this.input.consumeLateral(dt, CONFIG.crowd), -maxX, maxX);
 
-    this.d += forwardSpeed * dt;
-    this.x = THREE.MathUtils.clamp(this.x + this.input.consumeLateral(dt, CONFIG.player), -halfWidth, halfWidth);
-    this.invulnerable -= dt;
+    this.checkGates();
+    this.checkCoins();
+    this.checkObstacles();
+    this.checkEnemies();
 
-    this.checkGates(previousD);
-    this.checkPickups();
-    this.checkObstacles(coreRadius);
-
-    if (this.mass <= 0) return this.finish('lost');
-    const contact = this.level.boss.d - this.radius - massToRadius(this.bossMass);
-    if (this.d >= contact) {
-      this.d = contact;
-      this.state = 'clash';
-      this.clashRate = clashRate(this.mass, this.bossMass);
-    }
+    if (player.count <= 0) this.lose();
+    else if (player.center.d >= this.level.finishD - 1) this.startBoss();
   }
 
-  checkGates(previousD) {
-    const gate = this.level.gates[this.nextGate];
-    if (!gate || gate.d > this.d || gate.d <= previousD) return;
+  checkGates() {
+    const gate = this.view.gates[this.nextGate];
+    if (!gate || this.player.center.d < gate.pair.d) return;
     this.nextGate += 1;
-    const color = gateColor(gate, this.x);
-    if (color !== this.player.color) this.effects.burst(this.player.group.position, color, { count: 10, speed: 4 });
-    this.player.setColor(color);
+    const chosen = chooseGate(gate.pair, this.player.center.x);
+    const removed = this.player.setCount(applyGate(this.player.count, chosen));
+    removed.forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    const panel = gate.panels[chosen === gate.pair.left ? 0 : 1];
+    this.effects.tween(0.35, (k) => {
+      panel.glass.material.opacity = 0.5 + Math.sin(k * Math.PI) * 0.4;
+      panel.label.scale.setScalar(1 + Math.sin(k * Math.PI) * 0.4);
+    }, () => { panel.glass.visible = panel.label.visible = false; });
   }
 
-  checkPickups() {
-    const r = this.radius;
-    this.remainingPickups = this.remainingPickups.filter((pickup) => {
-      if (pickup.d < this.d - 5) return false; // already behind the player
-      if (!circlesOverlap(this.x, this.d, r, pickup.x, pickup.d, massToRadius(pickup.mass))) return true;
-
-      const blob = this.view.pickups.get(pickup.id);
-      const before = this.mass;
-      this.mass = applyPickup(this.mass, this.player.color, pickup);
-      if (this.mass > before) {
-        this.effects.absorb(blob.group, this.player.group);
-      } else {
-        blob.group.visible = false;
-        this.effects.burst(blob.group.position, pickup.color, { count: 8, speed: 5 });
-      }
+  checkCoins() {
+    const { center } = this.player;
+    const reach = this.player.radius + 0.6;
+    this.remainingCoins = this.remainingCoins.filter((coin) => {
+      if (Math.abs(coin.d - center.d) > reach || Math.abs(coin.x - center.x) > reach) return true;
+      this.runCoins += CONFIG.coins.value;
+      this.hud.setCoins(this.save.coins + this.runCoins);
+      const mesh = this.view.coins.get(coin.id);
+      const startY = mesh.position.y;
+      this.effects.tween(0.3, (k) => {
+        mesh.position.y = startY + k * 2.5;
+        mesh.scale.setScalar(1 - k);
+      }, () => { mesh.visible = false; });
       return false;
     });
   }
 
-  checkObstacles(coreRadius) {
-    if (this.invulnerable > 0) return;
-    const hit = this.view.obstacles.find(({ obstacle }) =>
-      Math.abs(obstacle.d - this.d) < 3 && obstacleHits(obstacle, this.time, this.x, this.d, coreRadius));
-    if (!hit) return;
-    this.mass = applyObstacleHit(this.mass);
-    this.invulnerable = CONFIG.player.invulnerableSeconds;
-    this.effects.shake = 1;
-    this.effects.burst(this.player.group.position, this.player.color, { count: 18, speed: 8 });
+  checkObstacles() {
+    const { player } = this;
+    const near = this.view.obstacles.filter(({ obstacle }) => Math.abs(obstacle.d - player.center.d) < player.radius + 3);
+    if (!near.length) return;
+    const { unitRadius } = CONFIG.crowd;
+    // Each body is tested once, when it crosses the obstacle line. Testing overlap every frame
+    // would wipe the crowd: survivors re-pack into the dead bodies' slots, right on the spikes.
+    const hits = [];
+    player.units.forEach((u, i) => {
+      if (near.some(({ obstacle }) => crossesObstacle(obstacle, this.time, u.x, u.prevD, u.d, unitRadius))) hits.push(i);
+    });
+    if (!hits.length) return;
+    player.kill(hits).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    this.effects.shake = Math.max(this.effects.shake, 0.4);
   }
 
-  updateClash(dt) {
-    ({ playerMass: this.mass, bossMass: this.bossMass } = clashStep(this.mass, this.bossMass, this.clashRate, dt));
-    this.effects.shake = Math.max(this.effects.shake, 0.35);
-    if (Math.random() < dt * 20) {
-      this.effects.burst(this.player.group.position, this.player.color, { count: 2, speed: 6 });
-    }
-    const result = clashResult(this.mass, this.bossMass);
-    if (result) this.finish(result);
+  checkEnemies() {
+    const target = this.view.enemies[this.nextEnemy];
+    if (!target) return;
+    const { player } = this;
+    if (player.center.d + player.radius < target.enemy.d - target.crowd.radius) return;
+    this.state = 'skirmish';
+    this.skirmish = { target, a: player.count, b: target.crowd.count, rate: clashRate(player.count, target.crowd.count) };
+    player.mood = target.crowd.mood = 'fight';
   }
 
-  finish(result) {
-    const lostInClash = this.state === 'clash';
-    this.state = result;
-    const levelNumber = this.level.level;
-    if (result === 'won') {
-      this.view.boss.group.visible = false;
-      this.effects.burst(this.view.boss.group.position, 'red', { count: 40, speed: 12, size: 0.4 });
-      saveLevel(levelNumber + 1);
-      this.hud.showOverlay({
-        title: 'You win! 🎉',
-        body: `Level ${levelNumber} cleared with <b>${Math.round(this.mass)}</b> mass left.`,
-        button: 'Next level',
-        onClick: () => this.loadLevel(levelNumber + 1),
-      });
-      return;
+  updateSkirmish(dt) {
+    const s = this.skirmish;
+    const { player } = this;
+    const enemy = s.target.crowd;
+    [s.a, s.b] = clashStep(s.a, s.b, s.rate, dt);
+    player.setCount(Math.ceil(s.a)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    enemy.setCount(Math.ceil(s.b)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.enemy.splat));
+    // Both crowds lean into each other.
+    const gap = enemy.center.d - player.center.d;
+    player.center.d += Math.min(gap * 0.5, CONFIG.crowd.forwardSpeed * 0.25 * dt);
+    this.effects.shake = Math.max(this.effects.shake, 0.25);
+
+    if (player.count <= 0) return this.lose();
+    if (enemy.count <= 0) {
+      this.nextEnemy += 1;
+      this.state = 'running';
+      player.mood = 'run';
     }
-    this.player.group.visible = false;
-    this.effects.burst(this.player.group.position, this.player.color, { count: 40, speed: 12, size: 0.4 });
-    this.hud.showOverlay({
-      title: 'Splat! 💥',
-      body: lostInClash
-        ? `The boss still had <b>${Math.round(this.bossMass)}</b> mass. Grow bigger before the clash.`
-        : 'You lost all your mass.',
-      button: 'Try again',
-      onClick: () => this.loadLevel(levelNumber),
+  }
+
+  // ---- Boss ---------------------------------------------------------------------
+  startBoss() {
+    const { player } = this;
+    this.state = 'boss';
+    player.center.d = this.level.finishD - 1;
+    player.mood = 'fight';
+    this.fight = {
+      count: player.count, hp: this.level.boss.hp, carry: 0,
+      damage: damageFor(this.save.upgrades.damage), result: null,
+    };
+    this.launchRate = bossLaunchRate(player.count);
+  }
+
+  updateBoss(dt) {
+    const { fight, player } = this;
+    if (fight.result) return;
+    Object.assign(fight, bossFightStep(fight, this.launchRate, dt));
+    if (fight.launched) {
+      const bodies = player.take(fight.launched);
+      player.setCount(fight.count);
+      bodies.forEach((body, i) => this.launchAtBoss(body, i * 0.04));
+    }
+    fight.result = bossFightResult(fight);
+    if (fight.result) {
+      this.effects.tween(0.7, () => {}, () => (fight.result === 'won' ? this.startBonus() : this.lose()));
+    }
+  }
+
+  launchAtBoss(body, delay) {
+    const mesh = new THREE.Mesh(this.player.mesh.geometry, this.player.mesh.material);
+    mesh.scale.setScalar(0.9);
+    mesh.rotation.y = Math.PI;
+    const from = new THREE.Vector3(body.x, 0, toZ(body.d));
+    bossChest.set((Math.random() - 0.5) * 1.6, 3.2 + Math.random(), toZ(this.level.boss.d) + 1.2);
+    const to = bossChest.clone();
+    this.effects.root.add(mesh);
+    this.effects.tween(0.32 + delay, (k) => {
+      const t = Math.max(0, (k * (0.32 + delay) - delay) / 0.32);
+      mesh.position.lerpVectors(from, to, t);
+      mesh.position.y += Math.sin(t * Math.PI) * 2.2;
+      mesh.rotation.x = -t * 1.5;
+    }, () => {
+      this.effects.root.remove(mesh);
+      this.effects.burst(to, PALETTE.player.splat, { count: 8, speed: 7, size: 0.2 });
+      this.effects.splat(to.x + (Math.random() - 0.5) * 3, to.z + 1 + Math.random() * 2, PALETTE.player.splat, 1.6, 0.3);
+      this.bossHpShown = Math.max(this.fight.hp, this.bossHpShown - this.fight.damage);
+      const arm = Math.random() < 0.5 ? 0 : 1;
+      this.bossPunch[arm] = 1;
+      this.effects.shake = Math.max(this.effects.shake, 0.3);
     });
   }
 
+  startBonus() {
+    this.state = 'bonus';
+    this.bossHpShown = 0;
+    this.player.mood = 'cheer';
+    this.multiplier = bonusMultiplier(this.fight.count, this.level.boss.hp);
+    const { tiles } = this.view.ladder;
+    const tile = tiles.find((t) => t.multiplier === this.multiplier) ?? tiles[tiles.length - 1];
+    const boss = this.view.boss.root;
+    const from = boss.position.clone();
+    const to = new THREE.Vector3(0, 0.25, toZ(this.level.ladderStart + tile.d));
+    const height = 3 + (from.z - to.z) * 0.06;
+    this.effects.burst(new THREE.Vector3(0, 4, from.z), PALETTE.boss.top, { count: 30, speed: 10, size: 0.3 });
+    this.effects.tween(1.4 + (from.z - to.z) * 0.012, (k) => {
+      boss.position.lerpVectors(from, to, k);
+      boss.position.y += Math.sin(k * Math.PI) * height;
+      boss.rotation.x = -k * Math.PI * 3;
+    }, () => {
+      boss.rotation.x = -Math.PI / 2; // KO: flat on its back
+      boss.position.y = 0.6;
+      tile.tile.material.color.set(0x7cf05a);
+      this.effects.splat(to.x, to.z, PALETTE.boss.top, 7, 0.08);
+      this.effects.burst(new THREE.Vector3(to.x, 1, to.z), PALETTE.boss.top, { count: 30, speed: 9, size: 0.3 });
+      this.effects.shake = 1;
+      this.effects.tween(0.9, () => {}, () => this.complete());
+    });
+  }
+
+  complete() {
+    this.state = 'complete';
+    const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
+    this.save.coins += reward;
+    this.save.level = this.level.level + 1;
+    writeSave(this.save);
+    this.hud.setCoins(this.save.coins);
+    this.hud.showComplete({
+      level: this.level.level, coins: reward, multiplier: this.multiplier,
+      onNext: () => this.loadLevel(this.save.level),
+    });
+  }
+
+  lose() {
+    this.state = 'lost';
+    this.player.setCount(0).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    this.save.coins += this.runCoins;
+    writeSave(this.save);
+    this.hud.setCoins(this.save.coins);
+    this.effects.tween(0.8, () => {}, () => this.hud.showLose({
+      coins: this.runCoins, onContinue: () => this.loadLevel(this.level.level),
+    }));
+  }
+
+  // ---- Presentation -------------------------------------------------------------
   animateScene(dt) {
-    const running = this.state === 'running' || this.state === 'clash';
-    this.player.setRadius(this.radius);
-    this.player.group.position.x = this.x;
-    this.player.group.position.z = toZ(this.d);
-    // Blink while invulnerable after a hit.
-    this.player.body.visible = this.invulnerable <= 0 || Math.floor(this.time * 20) % 2 === 0;
-    this.player.update(dt, this.time, running ? 1 : 0.5);
-
-    const { boss } = this.view;
-    boss.setRadius(massToRadius(this.bossMass));
-    boss.update(dt, this.time, this.state === 'clash' ? 2.5 : 1);
-
-    for (const { obstacle, moving } of this.view.obstacles) {
-      if (!moving) continue;
-      moving.position.x = obstacleX(obstacle, this.time);
-      moving.rotation.x -= dt * 12;
+    for (const { obstacle, object } of this.view.obstacles) {
+      if (obstacle.kind !== 'melon') continue;
+      object.position.x = melonX(obstacle, this.time);
+      object.rotation.z = Math.sign(obstacle.edgeX) * (0.5 + 0.5 * Math.cos(obstacle.speed * this.time + obstacle.phase)) * 0.6;
     }
-    for (const blob of this.view.pickups.values()) blob.update(dt, this.time, 0.6);
+    for (const mesh of this.view.coins.values()) mesh.rotation.y += dt * 3;
+
+    if (this.state === 'bonus' || this.state === 'complete') return;
+    const { body, arms } = this.view.boss;
+    const fighting = this.state === 'boss';
+    body.scale.y = 1 + Math.sin(this.time * (fighting ? 8 : 3)) * 0.03;
+    arms.forEach((arm, i) => {
+      this.bossPunch[i] = Math.max(0, this.bossPunch[i] - dt * 4);
+      const guard = fighting ? 0.6 + Math.sin(this.time * 6 + i * Math.PI) * 0.15 : 0.25;
+      arm.rotation.x = -(guard + this.bossPunch[i] * 1.3);
+    });
+  }
+
+  cameraFocus() {
+    const { center } = this.player;
+    const r = this.player.radius;
+    switch (this.state) {
+      case 'boss':
+        return { pos: [0, 9, toZ(this.level.finishD) + 9], look: [0, 2.5, toZ(this.level.boss.d)] };
+      case 'bonus':
+      case 'complete': {
+        const { position } = this.view.boss.root;
+        return { pos: [position.x, 17, position.z + 11], look: [position.x, 0, position.z - 4] };
+      }
+      default:
+        return {
+          pos: [center.x * 0.5, 7.5 + r * 0.9, toZ(center.d) + 8.5 + r * 0.8],
+          look: [center.x * 0.35, 0.6, toZ(center.d) - 7],
+        };
+    }
   }
 
   updateCamera(dt) {
     const { camera } = this.world;
-    const r = this.player.radius;
-    const z = toZ(this.d);
-    const shake = this.effects.shake * 0.3;
-    // At the finale swing to the side so both the player and the boss stay in view.
-    const finale = this.state !== 'ready' && this.state !== 'running' ? 1 : 0;
-    cameraTarget.set(
-      this.x * 0.5 + finale * (7 + r * 2) + (Math.random() - 0.5) * shake,
-      4.5 + r * 2.2 + finale * 2,
-      z + 8 + r * 2.8 - finale * 6,
-    );
-    camera.position.lerp(cameraTarget, Math.min(1, dt * (finale ? 2 : 5)));
-    lookTarget.set(this.x * 0.3, r, z - 8 + finale * 4);
-    camera.lookAt(lookTarget);
-    this.world.followSun(this.player.group.position);
+    if (this.state !== 'lost') {
+      const focus = this.cameraFocus();
+      cameraGoal.fromArray(focus.pos);
+      lookGoal.fromArray(focus.look);
+    }
+    const k = this.snapCamera ? 1 : Math.min(1, dt * (this.state === 'bonus' ? 7 : 4));
+    this.snapCamera = false;
+    camera.position.lerp(cameraGoal, k);
+    lookCurrent.lerp(lookGoal, k);
+    const shake = this.effects.shake * 0.25;
+    camera.position.x += (Math.random() - 0.5) * shake;
+    camera.position.y += (Math.random() - 0.5) * shake;
+    camera.lookAt(lookCurrent);
+    this.world.follow(lookCurrent, this.time);
   }
 
   updateHud() {
     const { camera } = this.world;
-    this.hud.setProgress(this.d / this.level.boss.d);
-    for (const [label, blob, mass] of [
-      [this.hud.playerLabel, this.player, this.mass],
-      [this.hud.bossLabel, this.view.boss, this.bossMass],
-    ]) {
-      labelOffset.copy(blob.group.position).setY(blob.radius * 2 + 0.4);
-      this.hud.placeLabel(label, labelOffset, camera, Math.ceil(mass), blob.group.visible);
+    const { player } = this;
+    this.hud.setProgress(player.center.d / this.level.finishD);
+
+    bubbleAnchor.set(player.center.x, 2.3, toZ(player.center.d));
+    this.hud.placeBubble(this.playerBubble, bubbleAnchor, camera, player.count, player.count > 0 && this.state !== 'complete');
+
+    const inRange = (d) => d - player.center.d < CONFIG.hud.bubbleRange;
+    for (const { crowd, bubble } of this.view.enemies) {
+      bubbleAnchor.set(crowd.center.x, 2.2, toZ(crowd.center.d));
+      this.hud.placeBubble(bubble, bubbleAnchor, camera, crowd.count, crowd.count > 0 && inRange(crowd.center.d));
     }
+
+    bubbleAnchor.set(0, 6.6, toZ(this.level.boss.d));
+    const bossAlive = this.state !== 'bonus' && this.state !== 'complete' && inRange(this.level.boss.d);
+    this.hud.placeBubble(this.bossBubble, bubbleAnchor, camera, Math.ceil(this.bossHpShown), bossAlive);
   }
 }

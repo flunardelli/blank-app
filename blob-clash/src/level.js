@@ -1,91 +1,88 @@
-// Procedural, seeded level generator. Output is plain data; rendering lives in levelView.js.
-import { CONFIG, COLOR_NAMES } from './config.js';
+// Procedural, seeded level generator. Output is plain data; levelView.js renders it.
+import { CONFIG } from './config.js';
 import { createRng } from './rng.js';
-import { bossDifficulty } from './rules.js';
+import { applyGate, bestGate, bossDifficulty } from './rules.js';
 
-function twoDistinctColors(rng) {
-  const first = rng.pick(COLOR_NAMES);
-  const second = rng.pick(COLOR_NAMES.filter((c) => c !== first));
-  return [first, second];
+function goodGate(rng, level, cfg) {
+  return rng.chance(0.4)
+    ? { op: 'x', value: rng.pick(cfg.multipliers) }
+    : { op: '+', value: rng.int(cfg.addMin, cfg.addMax + level) };
 }
 
-function makeObstacle(rng, d, cfg) {
-  const { lanes } = cfg.track;
+function badGate(rng, cfg) {
+  return rng.chance(0.7) ? { op: '-', value: rng.int(cfg.subMin, cfg.subMax) } : { op: '/', value: 2 };
+}
+
+function makeGatePair(rng, d, level, cfg, forceGood) {
+  const good = goodGate(rng, level, cfg);
+  const other = !forceGood && rng.chance(cfg.badChance) ? badGate(rng, cfg) : goodGate(rng, level, cfg);
+  const [left, right] = rng.chance(0.5) ? [good, other] : [other, good];
+  return { d, left, right };
+}
+
+// One melon on a random edge, or a pair on both edges sliding in turns.
+function makeMelons(rng, d, cfg) {
   const ob = cfg.obstacle;
-  if (rng.chance(0.5)) {
-    return {
-      kind: 'saw', d, radius: ob.sawRadius,
-      amplitude: ob.sawAmplitude, speed: ob.sawSpeed, phase: rng.next() * Math.PI * 2,
-    };
-  }
-  // A wall blocks two adjacent lanes and leaves the third one open.
-  const start = rng.int(0, lanes.length - 2);
-  const [a, b] = [lanes[start], lanes[start + 1]];
-  return {
-    kind: 'wall', d, x: (a + b) / 2,
-    halfWidth: Math.abs(b - a) / 2 + ob.wallPadding, halfDepth: ob.wallDepth / 2,
-  };
+  const half = cfg.track.width / 2;
+  const phase = rng.next() * Math.PI * 2;
+  const melon = (side, offset) => ({
+    kind: 'melon', d, radius: ob.melonRadius, edgeX: side * half,
+    reach: ob.melonReach, speed: ob.melonSpeed, phase: phase + offset,
+  });
+  return rng.chance(0.5) ? [melon(rng.pick([-1, 1]), 0)] : [melon(-1, 0), melon(1, Math.PI)];
 }
 
-function makePickupRow(rng, d, colors, cfg) {
-  const { lanes, laneJitter } = cfg.track;
-  const { minMass, maxMass, rowFillChance } = cfg.pickup;
-  return lanes
-    .filter(() => rng.chance(rowFillChance))
-    .map((laneX) => ({
-      d,
-      x: laneX + (rng.next() * 2 - 1) * laneJitter,
-      color: rng.pick(colors),
-      mass: rng.int(minMass, maxMass),
-    }));
+function makeObstacles(rng, d, cfg) {
+  const ob = cfg.obstacle;
+  if (rng.chance(0.5)) return makeMelons(rng, d, cfg);
+  const pads = rng.pick(ob.spikeLayouts).map(([x, halfWidth]) => ({ x, halfWidth, halfDepth: ob.spikeHalfDepth }));
+  return [{ kind: 'spikes', d, pads }];
 }
 
-// Upper bound of what a player can gain in one segment: commit to one gate colour
-// and take the heaviest pickup of that colour in every row.
-function bestSegmentGain(rows, colors) {
-  const gainFor = (color) => rows
-    .map((row) => Math.max(0, ...row.filter((p) => p.color === color).map((p) => p.mass)))
-    .reduce((sum, m) => sum + m, 0);
-  return Math.max(...colors.map(gainFor));
+function makeCoinRow(rng, d, cfg) {
+  const x = rng.pick(cfg.track.lanes);
+  return Array.from({ length: cfg.coins.perRow }, (_, i) => ({ x, d: d + i * cfg.coins.spacing }));
 }
 
 export function generateLevel(level, cfg = CONFIG) {
-  const rng = createRng(level * 9973 + 17);
+  const rng = createRng(level * 7919 + 13);
   const { track } = cfg;
-  const segments = 4 + Math.min(level, 6);
+  const segments = 5 + Math.min(level, 5);
   const gates = [];
   const obstacles = [];
-  const pickups = [];
-  let bestMass = cfg.player.startMass;
+  const coins = [];
+  const enemies = [];
+  // Best reachable crowd with a fresh (non-upgraded) start and perfect gate choices.
+  let bestCount = 1;
   let d = track.introLength;
 
   for (let s = 0; s < segments; s++, d += track.segmentLength) {
-    const [left, right] = twoDistinctColors(rng);
-    gates.push({ d, left, right });
+    const pair = makeGatePair(rng, d, level, cfg.gates, s === 0);
+    gates.push(pair);
+    bestCount = applyGate(bestCount, bestGate(bestCount, pair), cfg.gates.maxCount);
 
-    const rowDistances = [];
-    for (let rd = d + 6; rd < d + track.segmentLength - 4; rd += track.rowSpacing) rowDistances.push(rd);
-    const obstacleRow = rng.int(1, rowDistances.length - 2);
+    coins.push(...makeCoinRow(rng, d + 6, cfg));
+    obstacles.push(...makeObstacles(rng, d + 18, cfg));
 
-    const rows = rowDistances.map((rd, i) => {
-      if (i === obstacleRow) {
-        obstacles.push(makeObstacle(rng, rd, cfg));
-        return [];
-      }
-      return makePickupRow(rng, rd, [left, right], cfg);
-    });
-    pickups.push(...rows.flat());
-    bestMass += bestSegmentGain(rows, [left, right]);
+    if (s % 2 === 1) {
+      const share = cfg.enemy.minShare + rng.next() * (cfg.enemy.maxShare - cfg.enemy.minShare);
+      const count = Math.max(2, Math.round(bestCount * share));
+      enemies.push({ d: d + 29, count });
+      bestCount -= count;
+    }
   }
 
-  const bossMass = Math.max(cfg.player.startMass + 5, Math.round(bestMass * bossDifficulty(level, cfg.boss)));
+  const finishD = d + cfg.boss.finishGap;
+  const bossD = finishD + cfg.boss.ringDepth / 2 + 1;
   return {
     level,
-    startColor: rng.pick(COLOR_NAMES),
     gates,
     obstacles,
-    pickups: pickups.map((p, id) => ({ ...p, id })),
-    boss: { d: d + track.bossGap, mass: bossMass },
-    bestMass,
+    coins: coins.map((c, id) => ({ ...c, id })),
+    enemies: enemies.map((e, id) => ({ ...e, id })),
+    finishD,
+    boss: { d: bossD, hp: Math.max(5, Math.round(bestCount * bossDifficulty(level, cfg.boss))) },
+    ladderStart: finishD + cfg.boss.ringDepth + 1,
+    bestCount,
   };
 }

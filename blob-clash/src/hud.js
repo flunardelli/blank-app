@@ -1,47 +1,100 @@
-// DOM overlay: counters, floating mass labels and the start / win / lose screens.
+// DOM overlay: coins, progress, count bubbles and the menu / complete / lose screens.
 import * as THREE from 'three';
+import { formatCoins } from './rules.js';
 
 const projected = new THREE.Vector3();
 const $ = (id) => document.getElementById(id);
 
 export class Hud {
   constructor() {
-    this.level = $('level');
+    this.coins = $('coins-value');
+    this.topbar = $('topbar');
     this.progress = $('progress-fill');
-    this.playerLabel = $('player-label');
-    this.bossLabel = $('boss-label');
-    this.overlay = $('overlay');
-    this.title = $('overlay-title');
-    this.body = $('overlay-body');
-    this.button = $('overlay-button');
+    this.bubbles = $('bubbles');
+    this.screens = { menu: $('menu'), complete: $('complete'), lose: $('lose') };
   }
 
-  setLevel(level) {
-    this.level.textContent = `Level ${level}`;
+  setCoins(n) {
+    this.coins.textContent = formatCoins(n);
   }
 
   setProgress(fraction) {
-    this.progress.style.width = `${Math.min(1, Math.max(0, fraction)) * 100}%`;
+    this.progress.style.width = `${THREE.MathUtils.clamp(fraction, 0, 1) * 100}%`;
   }
 
-  // Pins an HTML label above a 3D position.
-  placeLabel(element, worldPosition, camera, text, show = true) {
+  createBubble(kind) {
+    const el = Object.assign(document.createElement('div'), { className: `bubble ${kind}` });
+    this.bubbles.append(el);
+    return el;
+  }
+
+  clearBubbles() {
+    this.bubbles.replaceChildren();
+  }
+
+  // Pins a count bubble above a 3D position.
+  placeBubble(el, worldPosition, camera, text, show = true) {
     projected.copy(worldPosition).project(camera);
-    const visible = show && projected.z < 1;
-    element.style.display = visible ? 'block' : 'none';
+    const visible = show && projected.z < 1 && Math.abs(projected.x) < 1.2 && Math.abs(projected.y) < 1.2;
+    el.style.display = visible ? 'block' : 'none';
     if (!visible) return;
-    element.style.transform = `translate(-50%, -100%) translate(${(projected.x + 1) * 50}vw, ${(1 - projected.y) * 50}vh)`;
-    element.textContent = text;
+    el.style.transform = `translate(-50%, -100%) translate(${(projected.x + 1) * 50}vw, ${(1 - projected.y) * 50}vh)`;
+    if (el.textContent !== String(text)) el.textContent = text;
   }
 
-  showOverlay({ title, body, button, onClick }) {
-    this.title.textContent = title;
-    this.body.innerHTML = body;
-    this.button.textContent = button;
-    this.button.onclick = () => {
-      this.overlay.hidden = true;
-      onClick();
-    };
-    this.overlay.hidden = false;
+  show(name) {
+    Object.entries(this.screens).forEach(([key, el]) => { el.hidden = key !== name; });
+    this.topbar.classList.toggle('hidden-progress', name === 'menu');
+  }
+
+  showMenu({ level, upgrades, onBuy }) {
+    $('menu-level').textContent = `Level ${level}`;
+    const cards = $('upgrade-cards');
+    cards.replaceChildren(...upgrades.map((upgrade) => {
+      const card = document.createElement('button');
+      card.className = `upgrade-card${upgrade.affordable ? '' : ' locked'}`;
+      card.innerHTML = `
+        <span class="upgrade-title">${upgrade.title}</span>
+        <span class="upgrade-level">Level ${upgrade.level}</span>
+        <span class="upgrade-icon">${upgrade.icon}</span>
+        <span class="upgrade-cost"><i class="coin-icon"></i>${formatCoins(upgrade.cost)}</span>`;
+      card.addEventListener('pointerdown', (e) => e.stopPropagation());
+      card.addEventListener('click', () => onBuy(upgrade.id));
+      return card;
+    }));
+    this.show('menu');
+  }
+
+  showComplete({ level, coins, multiplier, onNext }) {
+    $('complete-level').textContent = `Level ${level}`;
+    $('complete-coins').textContent = coins;
+    $('complete-multiplier').textContent = `x${multiplier.toFixed(1)}`;
+    $('complete-next').onclick = onNext;
+    this.show('complete');
+    this.confetti();
+  }
+
+  showLose({ coins, onContinue }) {
+    $('lose-coins').textContent = `+${coins}`;
+    $('lose-continue').onclick = onContinue;
+    this.show('lose');
+  }
+
+  hideScreens() {
+    this.show(null);
+  }
+
+  confetti() {
+    const layer = $('confetti');
+    const colors = ['#ff4d6d', '#4dabf7', '#51cf66', '#ffd43b', '#9775fa', '#22d3ee'];
+    layer.replaceChildren(...Array.from({ length: 70 }, () => {
+      const piece = document.createElement('i');
+      piece.style.left = `${Math.random() * 100}%`;
+      piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+      piece.style.animationDelay = `${Math.random() * 0.8}s`;
+      piece.style.animationDuration = `${2 + Math.random() * 1.5}s`;
+      piece.style.setProperty('--spin', `${Math.random() * 720 - 360}deg`);
+      return piece;
+    }));
   }
 }
