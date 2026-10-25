@@ -2,10 +2,11 @@
 import * as THREE from 'three';
 import { CONFIG, PALETTE } from './config.js';
 import {
-  createBoss, createButton, createChampion, createCoin, createFinishLine, createGate, createKey, createLadder,
+  createButton, createCoin, createFinishLine, createGate, createKey, createLadder,
   createMelon, createPillar, createRing, createSpikeField, createSpikePad, createSpringGlove, createTrack,
   gummyMaterial, humanoidGeometry,
 } from './art/models.js';
+import { createBoss, createChampion } from './art/boxer.js';
 import { bossForLevel } from './bosses.js';
 import { Crowd } from './crowd.js';
 
@@ -26,7 +27,7 @@ export function createPlayerCrowd(scene) {
 }
 
 export function createPlayerChampion() {
-  return createChampion(shared.playerGeometry, shared.playerMaterial);
+  return createChampion(shared.playerMaterial, PALETTE.player);
 }
 
 function buildSlider(obstacle) {
@@ -105,8 +106,8 @@ export function buildLevelView(scene, level) {
   place(createFinishLine(), level.finishD);
   place(createRing(CONFIG.boss.ringDepth), level.finishD + 0.6);
   const boss = createBoss(bossForLevel(level.level));
-  place(boss.root, level.boss.d);
-  boss.root.position.y = 0.25;
+  boss.anchor.set(0, 0.25, toZ(level.boss.d));
+  root.add(boss.root);
   place(ladder.group, level.ladderStart);
 
   return {

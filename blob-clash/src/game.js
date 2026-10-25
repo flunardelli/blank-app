@@ -4,7 +4,10 @@ import { CONFIG, PALETTE } from './config.js';
 import { Effects } from './effects.js';
 import { generateLevel } from './level.js';
 import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './levelView.js';
+import { Animator, clipDuration } from './anim.js';
+import { applyPose } from './art/boxer.js';
 import { bossForLevel } from './bosses.js';
+import { attackStats, BOSS_MOVES, CHAMPION_MOVES, GUARD, idlePose, KNOCKED_OUT, REACTIONS } from './moves.js';
 import {
   applyGate, bonusMultiplier, bossPunchDamage, championStats, chestReward, chooseGate, clashRate, clashStep,
   comboStep, crossesObstacle, pressesButton, rewardCoins, sliderX, startBlobsFor, upgradeCost,
@@ -30,6 +33,7 @@ export class Game {
     this.effects = new Effects(world.scene);
     this.player = createPlayerCrowd(world.scene);
     this.champion = createPlayerChampion();
+    this.championAnim = new Animator(GUARD);
     world.scene.add(this.champion.root);
     this.time = 0;
     this.view = null;
@@ -48,6 +52,11 @@ export class Game {
     this.hud.showFight(false);
     this.level = generateLevel(levelNumber);
     this.boss = bossForLevel(levelNumber);
+    this.bossAttack = attackStats(this.boss.attack);
+    this.bossAnim = new Animator(GUARD);
+    this.championAnim = new Animator(GUARD);
+    this.hitStop = 0;
+    this.cameraKick = 0;
     this.view = buildLevelView(this.world.scene, this.level);
 
     this.state = 'menu';
@@ -104,7 +113,10 @@ export class Game {
   }
 
   // ---- Frame update -------------------------------------------------------------
-  update(dt) {
+  update(rawDt) {
+    // Hit stop: big impacts freeze the action for a few frames so they land with weight.
+    const dt = this.hitStop > 0 ? rawDt * 0.12 : rawDt;
+    this.hitStop -= rawDt;
     this.time += dt;
     if (this.state === 'running') this.updateRunning(dt);
     else if (this.state === 'skirmish') this.updateSkirmish(dt);
@@ -266,12 +278,13 @@ export class Game {
     const stats = championStats(player.count, this.save.upgrades.damage);
     this.fight = {
       ...stats, maxHp: stats.hp, bossHp: this.level.boss.hp, bossMaxHp: this.level.boss.hp,
-      bossTimer: this.boss.attack.interval + 0.8, combo: 0, lastTap: -10, jumping: false,
-      flinch: 0, bossFlinch: 0, slam: 0, nextGlove: 0, nextBossArm: 0,
+      // The first attack's punch lands 0.8 s after a normal interval.
+      bossTimer: this.bossAttack.interval + 0.8 - this.bossAttack.windup,
+      combo: 0, lastTap: -10, jumping: false, nextGlove: 0,
     };
     const spot = this.championSpot();
     this.championScale = 1.2 + Math.min(1.6, Math.cbrt(player.count) * 0.3);
-    champion.root.position.copy(spot);
+    champion.anchor.copy(spot);
     champion.root.rotation.y = Math.PI;
     champion.root.scale.setScalar(0.01);
     champion.root.visible = true;
@@ -303,6 +316,15 @@ export class Game {
     }, () => this.effects.root.remove(mesh));
   }
 
+  later(seconds, callback) {
+    this.effects.tween(seconds, () => {}, callback);
+  }
+
+  // Runs `onHit` at every hit frame of a clip, so damage lands when the fist does.
+  onHits(clip, onHit) {
+    clip.hits.forEach((t, i) => this.later(t, () => onHit(i)));
+  }
+
   // ---- Player moves ----
   championPunch() {
     const f = this.fight;
@@ -310,43 +332,36 @@ export class Game {
     const step = comboStep(f, this.time);
     Object.assign(f, { combo: step.combo, lastTap: step.lastTap });
     if (step.finisher && !f.jumping) return this.jumpPunch(step.multiplier);
-    const glove = this.champion.gloves[f.nextGlove];
+    // Jabs land at once (taps must feel instant); mid-air taps still count, without a new pose.
+    if (!f.jumping) this.championAnim.play(CHAMPION_MOVES.jab[f.nextGlove]);
     f.nextGlove = 1 - f.nextGlove;
-    glove.userData.punch = 1;
     this.hitBoss(f.punch * step.multiplier, { stars: 2, scale: 0.7 });
   }
 
-  // Flying "superman" punch: leap at the boss with both gloves forward, land back in place.
+  // Flying "superman" punch: crouch, launch with both fists forward, bounce off, land.
   jumpPunch(multiplier) {
     const f = this.fight;
-    const { root, body, gloves } = this.champion;
-    const spot = this.championSpot();
+    const clip = CHAMPION_MOVES.jumpPunch;
     f.jumping = true;
     this.hud.popText('JUMP PUNCH!');
-    let landed = false;
-    this.effects.tween(0.55, (k) => {
-      const out = Math.sin(Math.min(k / 0.5, 1) * Math.PI / 2) * (1 - Math.max(0, k - 0.5) * 2);
-      root.position.set(spot.x, spot.y + Math.sin(k * Math.PI) * 2.6, spot.z - out * 3.2);
-      body.rotation.x = out * 1.2; // dive forward, body almost horizontal
-      gloves.forEach((g) => { g.userData.punch = out; });
-      if (!landed && k >= 0.45) {
-        landed = true;
-        this.hitBoss(f.punch * multiplier, { stars: 7, scale: 1.4 });
-        this.effects.shake = 0.8;
-      }
-    }, () => {
-      root.position.copy(spot);
-      body.rotation.x = 0;
+    this.championAnim.play(clip);
+    this.onHits(clip, () => {
+      this.hitBoss(f.punch * multiplier, { stars: 7, scale: 1.4 }, REACTIONS.hurtBig);
+      this.effects.shake = 0.8;
+      this.hitStop = 0.09;
+      this.cameraKick = 1;
+    });
+    this.later(clipDuration(clip) - 0.2, () => {
       f.jumping = false;
-      this.effects.dustRing(spot.clone().setY(0.4), 1.2);
+      this.effects.dustRing(this.championSpot().setY(0.4), 1.2);
     });
   }
 
-  hitBoss(damage, impact) {
+  hitBoss(damage, impact, reaction = REACTIONS.hurt) {
     const f = this.fight;
     if (this.state !== 'boxing') return;
     f.bossHp = Math.max(0, f.bossHp - damage);
-    f.bossFlinch = 1;
+    this.bossAnim.react(reaction);
     const at = this.bossChest().add(new THREE.Vector3((Math.random() - 0.5) * 1.2, (Math.random() - 0.5), 0));
     this.effects.impact(at, impact);
     this.effects.burst(at, this.boss.colors.top, { count: 5, speed: 6, size: 0.18 });
@@ -354,54 +369,35 @@ export class Game {
     if (f.bossHp <= 0) this.knockOut();
   }
 
-  // ---- Boss moves (data-driven by bosses.js) ----
+  // ---- Boss moves (bosses.js picks the move, moves.js choreographs it) ----
   updateBoxing(dt) {
     const f = this.fight;
-    const { attack } = this.boss;
     f.bossTimer -= dt;
     if (f.bossTimer > 0) return;
-    f.bossTimer = attack.interval;
-    const damage = bossPunchDamage(f.maxHp, attack);
-    if (attack.move === 'slam') return this.bossSlam(damage);
-    const gap = attack.move === 'flurry' ? 0.15 : 0.22;
-    for (let i = 0; i < attack.strikes; i++) {
-      this.effects.tween(i * gap, () => {}, () => this.bossStrike(damage, attack.move === 'heavy' ? 1.6 : 1));
-    }
+    f.bossTimer = this.bossAttack.interval;
+    const move = BOSS_MOVES[this.boss.attack.move];
+    const damage = bossPunchDamage(f.maxHp, this.bossAttack);
+    this.bossAnim.play(move);
+    this.onHits(move, () => this.bossStrike(damage, move));
   }
 
-  // Wind-up progress 0 -> 1 during the last `windup` seconds before an attack lands.
-  windup() {
-    const f = this.fight;
-    if (this.state !== 'boxing' || !f) return 0;
-    return THREE.MathUtils.clamp(1 - f.bossTimer / this.boss.attack.windup, 0, 1);
-  }
-
-  bossStrike(damage, weight = 1) {
+  bossStrike(damage, { weight, impact }) {
     const f = this.fight;
     if (this.state !== 'boxing') return;
-    const arm = this.view.boss.arms[f.nextBossArm];
-    f.nextBossArm = 1 - f.nextBossArm;
-    arm.userData.strike = 1;
+    const heavy = weight > 1.2;
     f.hp = Math.max(0, f.hp - damage);
-    f.flinch = 1;
+    this.championAnim.react(heavy ? REACTIONS.hurtBig : REACTIONS.hurt);
     const at = this.champion.root.position.clone().setY(1.6 * this.championScale / 2 + 0.6);
     this.effects.impact(at, { stars: Math.round(3 * weight), scale: 0.8 * weight });
     this.effects.burst(at, PALETTE.player.splat, { count: Math.round(8 * weight), speed: 7, size: 0.2 });
     this.effects.splat(at.x + (Math.random() - 0.5) * 2, at.z + (Math.random() - 0.5) * 2, PALETTE.player.splat, 1.4, 0.3);
+    if (impact === 'shockwave') this.effects.dustRing(this.view.boss.root.position.clone().setY(0.5), 3);
     this.effects.shake = 0.4 * weight;
+    if (heavy) {
+      this.hitStop = 0.07;
+      this.cameraKick = 0.6;
+    }
     if (f.hp <= 0) this.championDown();
-  }
-
-  // Viking special: hop and smash the ring; the shockwave hits the champion.
-  bossSlam(damage) {
-    const boss = this.view.boss.root;
-    const baseY = boss.position.y;
-    this.effects.tween(0.45, (k) => { boss.position.y = baseY + Math.sin(k * Math.PI) * 2.2; }, () => {
-      boss.position.y = baseY;
-      this.effects.dustRing(boss.position.clone().setY(0.5), 3);
-      this.effects.shake = 1;
-      this.bossStrike(damage, 1.4);
-    });
   }
 
   knockOut() {
@@ -424,20 +420,22 @@ export class Game {
     this.multiplier = bonusMultiplier(healthFraction);
     const { tiles } = this.view.ladder;
     const tile = tiles.find((t) => t.multiplier === this.multiplier) ?? tiles[tiles.length - 1];
-    const boss = this.view.boss.root;
-    const from = boss.position.clone();
+    const rig = this.view.boss;
+    const boss = rig.root;
+    const from = rig.anchor.clone();
     const to = new THREE.Vector3(0, 0.25, toZ(this.level.ladderStart + tile.d));
     const height = 3 + (from.z - to.z) * 0.06;
-    this.champion.gloves[0].userData.punch = this.champion.gloves[1].userData.punch = 1;
+    this.championAnim.play(CHAMPION_MOVES.cheer, { hold: true });
+    this.bossAnim.play(KNOCKED_OUT, { hold: true });
     this.effects.burst(new THREE.Vector3(0, 4, from.z), this.boss.colors.top, { count: 30, speed: 10, size: 0.3 });
     this.effects.shake = 1;
     this.effects.tween(1.4 + (from.z - to.z) * 0.012, (k) => {
-      boss.position.lerpVectors(from, to, k);
-      boss.position.y += Math.sin(k * Math.PI) * height;
+      rig.anchor.lerpVectors(from, to, k);
+      rig.anchor.y += Math.sin(k * Math.PI) * height;
       boss.rotation.x = -k * Math.PI * 3;
     }, () => {
       boss.rotation.x = -Math.PI / 2; // KO: flat on its back
-      boss.position.y = 0.6;
+      rig.anchor.y = 0.6;
       tile.tile.material.color.set(0x7cf05a);
       this.effects.splat(to.x, to.z, this.boss.colors.top, 7, 0.08);
       this.effects.burst(new THREE.Vector3(to.x, 1, to.z), this.boss.colors.top, { count: 30, speed: 9, size: 0.3 });
@@ -497,42 +495,14 @@ export class Game {
     this.animateBoxers(dt);
   }
 
+  // Both boxers bounce in guard and play their clips; calmer before the bell.
   animateBoxers(dt) {
-    if (this.state === 'bonus' || this.state === 'complete') {
-      this.animateGloves(dt);
-      return;
+    const energy = this.state === 'boxing' ? 1 : 0.35;
+    applyPose(this.view.boss, this.bossAnim.update(dt, idlePose(this.time, energy)));
+    if (this.champion.root.visible) {
+      applyPose(this.champion, this.championAnim.update(dt, idlePose(this.time, energy, 1.7)));
     }
-    const { body, arms } = this.view.boss;
-    const f = this.fight;
-    const boxing = this.state === 'boxing';
-    const windup = this.windup();
-    const { move } = this.boss.attack;
-    if (f) f.bossFlinch = Math.max(0, f.bossFlinch - dt * 6);
-    // Slam crouches before jumping; everyone else pulls their arms back.
-    const crouch = move === 'slam' ? windup * 0.18 : 0;
-    const base = body.userData.baseScale ??= body.scale.clone();
-    body.scale.set(base.x * (1 + crouch * 0.5), base.y * (1 - crouch + Math.sin(this.time * (boxing ? 8 : 3)) * 0.03), base.z);
-    body.rotation.x = f ? -f.bossFlinch * 0.18 + (move === 'heavy' ? -windup * 0.2 : 0) : 0;
-    arms.forEach((arm, i) => {
-      arm.userData.strike = Math.max(0, (arm.userData.strike ?? 0) - dt * 4);
-      const guard = boxing ? 0.7 + Math.sin(this.time * 6 + i * Math.PI) * 0.12 : 0.25;
-      const pull = move === 'slam' ? -windup * 1.2 : windup * 0.7;
-      arm.rotation.x = -(guard - pull + arm.userData.strike * 1.6);
-    });
-    this.animateGloves(dt);
-  }
-
-  animateGloves(dt) {
-    const f = this.fight;
-    if (!this.champion.root.visible || !f) return;
-    f.flinch = Math.max(0, f.flinch - dt * 4);
-    if (!f.jumping) this.champion.body.rotation.x = -f.flinch * 0.3; // knocked back
-    this.champion.gloves.forEach((glove, i) => {
-      if (!f.jumping) glove.userData.punch = Math.max(0, (glove.userData.punch ?? 0) - dt * 7);
-      glove.position.copy(glove.userData.rest);
-      glove.position.z += glove.userData.punch * 0.9;
-      glove.position.y += Math.sin(this.time * 7 + i * Math.PI) * 0.05;
-    });
+    this.cameraKick = Math.max(0, this.cameraKick - dt * 3);
   }
 
   cameraFocus() {
@@ -545,7 +515,9 @@ export class Game {
         if (!this.fight) break;
         // Side-on ring view like the reference: champion left, boss right.
         const mid = toZ(this.level.boss.d - 2.6);
-        return { pos: [13, 6.5, mid + 5], look: [0, 2.8, mid - 0.5] };
+        // Big hits punch the camera in a little.
+        const kick = this.cameraKick * 2.5;
+        return { pos: [13 - kick, 6.5 - kick * 0.3, mid + 5 - kick * 0.4], look: [0, 2.8, mid - 0.5] };
       }
       case 'bonus':
       case 'complete': {

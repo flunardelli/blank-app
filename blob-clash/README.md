@@ -28,6 +28,10 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
   | PUNK | moicano | sequência de 3 socos |
 
   Golpes diferentes, mesmo dano médio por segundo (coberto por teste); adicionar um chefe é adicionar uma linha.
+- **Animação dos golpes** (`src/moves.js`): cada golpe é uma coreografia em keyframes (preparação, impacto,
+  recuperação), tocada sobre bonecos articulados (`src/art/boxer.js`: ombro, cotovelo, pernas, cabeça).
+  O dano cai no quadro em que o soco encosta, golpes fortes têm *hit stop* e a câmera dá um tranco.
+  O motor de keyframes (`src/anim.js`) não depende do three.js e tem testes próprios.
 - A vida que sobrar decide até onde o Boss voa na pista **x1.0 … x5.0**, que multiplica as moedas.
 - Moedas compram upgrades no menu: **Damage** (força do soco) e **Blobs** (tamanho inicial).
 
