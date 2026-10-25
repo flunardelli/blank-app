@@ -59,13 +59,20 @@ test('every jump ramp is followed by saws the jump clears', () => {
   }
 });
 
-test('bomb rows always leave a free lane, and a different one each row', () => {
+test('bomb rows alternate sides and leave room for the biggest crowd', () => {
+  const { unitRadius, maxRadius } = CONFIG.crowd;
+  const maxX = CONFIG.track.width / 2 - maxRadius; // how far the biggest crowd can move sideways
   for (let n = 1; n <= 30; n++) {
     const bombs = generateLevel(n).obstacles.filter((o) => o.kind === 'bomb');
     const rows = Object.values(Object.groupBy(bombs, (b) => b.d));
-    rows.forEach((row) => assert.equal(row.length, CONFIG.track.lanes.length - 1));
-    const freeLane = (row) => CONFIG.track.lanes.find((x) => !row.some((b) => b.x === x));
-    for (let i = 1; i < rows.length; i += 2) assert.notEqual(freeLane(rows[i - 1]), freeLane(rows[i]));
+    const side = (row) => Math.sign(row[0].x);
+    rows.forEach((row) => {
+      assert.ok(row.every((b) => Math.sign(b.x) === side(row)), `level ${n}: bombs on both sides`);
+      // Crowd hugging the free side: its nearest body must not touch any bomb.
+      const nearestBody = -side(row) * maxX + side(row) * (maxRadius - unitRadius);
+      row.forEach((b) => assert.ok(Math.abs(b.x - nearestBody) > b.radius + unitRadius, `level ${n}: no way past`));
+    });
+    for (let i = 1; i < rows.length; i += 2) assert.notEqual(side(rows[i - 1]), side(rows[i]));
   }
 });
 

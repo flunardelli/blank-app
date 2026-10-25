@@ -101,7 +101,10 @@ export const CONFIG = {
     // Bombs: stepping into the trigger radius blows up every blob within the blast radius.
     bombRadius: 0.6,
     bombBlast: 1.5,
-    bombRowGap: 5,
+    bombRowGap: 6,
+    // Each row packs its bombs on one side (mirrored for the other), so even the biggest crowd fits
+    // through the free side; rows alternate sides for a slalom.
+    bombSlots: [-4.2, -2.2],
   },
   // Gray walkers pacing across the track; each one takes `strength` blobs with it on contact.
   walkers: {

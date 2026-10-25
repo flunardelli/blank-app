@@ -75,14 +75,12 @@ function makeJump(rng, d, cfg) {
   return [ramp, saw(rng, landing + ob.jumpLength * 0.35, cfg), saw(rng, landing + ob.jumpLength * 0.65, cfg, Math.PI)];
 }
 
-// Two staggered rows of bombs: each row leaves one lane free, and never the same lane twice.
+// Two rows of bombs packed on alternate sides: dodge left, then right (or the other way round).
 function makeBombs(rng, d, cfg) {
   const ob = cfg.obstacle;
-  const { lanes } = cfg.track;
-  const free = rng.int(0, lanes.length - 1);
-  const nextFree = (free + rng.int(1, lanes.length - 1)) % lanes.length;
-  return [[free, d], [nextFree, d + ob.bombRowGap]].flatMap(([open, rowD]) =>
-    lanes.filter((_, i) => i !== open).map((x) => ({ kind: 'bomb', x, d: rowD, radius: ob.bombRadius, blast: ob.bombBlast })));
+  const first = rng.pick([-1, 1]);
+  return [[first, d], [-first, d + ob.bombRowGap]].flatMap(([side, rowD]) =>
+    ob.bombSlots.map((x) => ({ kind: 'bomb', x: side * x, d: rowD, radius: ob.bombRadius, blast: ob.bombBlast })));
 }
 
 const OBSTACLE_MAKERS = {
