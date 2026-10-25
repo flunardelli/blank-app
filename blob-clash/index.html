@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Blob Clash 3D</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div id="hud">
+    <span id="level">Level 1</span>
+    <div id="progress"><div id="progress-fill"></div></div>
+  </div>
+  <div id="player-label" class="mass-label"></div>
+  <div id="boss-label" class="mass-label boss"></div>
+
+  <div id="overlay" hidden>
+    <div class="card">
+      <h1 id="overlay-title"></h1>
+      <p id="overlay-body"></p>
+      <button id="overlay-button"></button>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
