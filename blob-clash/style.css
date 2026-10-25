@@ -1,0 +1,22 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #9fd3ff;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif; user-select: none; }
+#scene { display: block; width: 100vw; height: 100vh; touch-action: none; }
+
+#hud { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); width: min(420px, calc(100vw - 32px));
+  display: flex; align-items: center; gap: 12px; color: #fff; font-weight: 800; text-shadow: 0 2px 4px #0005; pointer-events: none; }
+#progress { flex: 1; height: 12px; border-radius: 6px; background: #ffffff66; overflow: hidden; }
+#progress-fill { height: 100%; width: 0; background: #fff; border-radius: 6px; }
+
+.mass-label { position: fixed; left: 0; top: 0; padding: 2px 10px; border-radius: 12px; background: #ffffffdd;
+  color: #222; font-weight: 900; font-size: 18px; pointer-events: none; white-space: nowrap; }
+.mass-label.boss { background: #2b2b3a; color: #fff; }
+
+#overlay { position: fixed; inset: 0; display: grid; place-items: center; background: #0004; padding: 16px; }
+#overlay[hidden] { display: none; }
+.card { background: #fff; border-radius: 20px; padding: 28px 24px; max-width: 360px; text-align: center; box-shadow: 0 10px 40px #0003; }
+.card h1 { margin: 0 0 12px; font-size: 32px; }
+.card p { margin: 0 0 20px; line-height: 1.5; color: #444; }
+.card button { font: inherit; font-weight: 800; font-size: 20px; border: 0; border-radius: 14px; padding: 12px 36px;
+  background: #4dabf7; color: #fff; cursor: pointer; box-shadow: 0 4px 0 #1c7ed6; }
+.card button:active { transform: translateY(2px); box-shadow: 0 2px 0 #1c7ed6; }
