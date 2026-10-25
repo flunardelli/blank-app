@@ -38,7 +38,7 @@ export class Crowd {
     this.units.push({ x, d, prevD: d, phase: Math.random() * Math.PI * 2, grow: 0 });
   }
 
-  /** Sets the logical size. Returns positions of removed bodies (for splats). */
+  /** Sets the logical size. Returns positions of removed bodies (for pop effects). */
   setCount(count) {
     this.count = Math.max(0, count);
     const visible = Math.min(this.count, this.maxVisible);

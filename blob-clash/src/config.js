@@ -1,8 +1,8 @@
 // Central place for every tunable number and colour. Gameplay code never hard-codes these.
 export const PALETTE = {
-  player: { bottom: 0xffb52e, top: 0xff3a1c, splat: 0xff7a1a },
-  enemy: { bottom: 0xe8506a, top: 0x9e1430, splat: 0x8f1d25 },
-  walker: { bottom: 0xe4e7f0, top: 0x8d93a6, splat: 0x9aa0b4 },
+  player: { bottom: 0xffb52e, top: 0xff3a1c, bits: 0xff8a1a },
+  enemy: { bottom: 0xe8506a, top: 0x9e1430, bits: 0xff6f9a },
+  walker: { bottom: 0xe4e7f0, top: 0x8d93a6, bits: 0xb8bdcc },
   glove: 0x2f56d6,
   championGlove: 0xd8264a,
   button: 0x3ee05a,
