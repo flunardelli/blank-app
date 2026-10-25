@@ -33,6 +33,25 @@ export class Hud {
     this.topbar.classList.toggle('fighting', visible);
   }
 
+  // Restarts a one-shot CSS animation on an element showing `text`.
+  flash(el, text) {
+    el.textContent = text;
+    el.hidden = false;
+    el.style.animation = 'none';
+    void el.offsetWidth; // reflow so the animation restarts
+    el.style.animation = '';
+    clearTimeout(el.hideTimer);
+    el.hideTimer = setTimeout(() => { el.hidden = true; }, 1600);
+  }
+
+  showBanner(text) {
+    this.flash($('banner'), text);
+  }
+
+  popText(text) {
+    this.flash($('pop'), text);
+  }
+
   setFight(playerFraction, bossFraction) {
     this.hpPlayer.style.width = `${THREE.MathUtils.clamp(playerFraction, 0, 1) * 100}%`;
     this.hpBoss.style.width = `${THREE.MathUtils.clamp(bossFraction, 0, 1) * 100}%`;

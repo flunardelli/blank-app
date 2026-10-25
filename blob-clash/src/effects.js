@@ -1,6 +1,6 @@
 // Short-lived visual effects. Each effect is a function(dt) that returns false when finished.
 import * as THREE from 'three';
-import { splatTextures } from './art/textures.js';
+import { emojiTexture, puffTexture, splatTextures, starTexture } from './art/textures.js';
 
 const dropGeometry = new THREE.SphereGeometry(1, 10, 8);
 const splatGeometry = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
@@ -96,6 +96,54 @@ export class Effects {
   pop(x, z, color, { y = 0.5, size = 1.4 } = {}) {
     this.burst(new THREE.Vector3(x, y, z), color, { count: 6, speed: 5 });
     this.splat(x, z, color, size * (0.8 + Math.random() * 0.5));
+  }
+
+  // A sprite that pops, drifts by `velocity` and fades out.
+  sprite(texture, position, { size = 1, velocity = new THREE.Vector3(), life = 0.7, spin = 0 } = {}) {
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, fog: false, toneMapped: false });
+    const sprite = new THREE.Sprite(material);
+    sprite.position.copy(position);
+    this.root.add(sprite);
+    let t = 0;
+    this.add((dt) => {
+      t += dt;
+      const k = t / life;
+      sprite.position.addScaledVector(velocity, dt);
+      sprite.scale.setScalar(size * Math.min(1, k * 5) * (1 - k * 0.3));
+      material.rotation += spin * dt;
+      material.opacity = 1 - Math.max(0, k - 0.6) / 0.4;
+      if (k < 1) return true;
+      this.root.remove(sprite);
+      material.dispose();
+      return false;
+    });
+  }
+
+  // Cartoon impact: yellow stars flying out plus a dust puff.
+  impact(position, { stars = 4, scale = 1 } = {}) {
+    for (let i = 0; i < stars; i++) {
+      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8 + 0.2, Math.random() - 0.5).normalize().multiplyScalar(4 * scale);
+      this.sprite(starTexture(), position, { size: (0.6 + Math.random() * 0.6) * scale, velocity: v, life: 0.6, spin: 6 });
+    }
+    this.sprite(puffTexture(), position, { size: 1.6 * scale, life: 0.35 });
+  }
+
+  // Ring of dust on the floor (boss slam, landings).
+  dustRing(position, radius = 3) {
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const v = new THREE.Vector3(Math.cos(a), 0.15, Math.sin(a)).multiplyScalar(radius * 1.8);
+      this.sprite(puffTexture(), position, { size: 1.4, velocity: v, life: 0.55 });
+    }
+  }
+
+  emojis(position, count = 3) {
+    const faces = ['😀', '😎', '😊', '😄', '🤩', '😁'];
+    for (let i = 0; i < count; i++) {
+      const at = position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, Math.random(), (Math.random() - 0.5) * 2));
+      const face = faces[Math.floor(Math.random() * faces.length)];
+      this.sprite(emojiTexture(face), at, { size: 1.3, velocity: new THREE.Vector3(0, 1.6, 0), life: 1.1 });
+    }
   }
 
   // Generic tween: progress k goes 0 -> 1 over `duration`, then onDone runs once.

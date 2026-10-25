@@ -64,6 +64,21 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #62c6ff; fon
 .outline { margin: 6px 0 0; font-size: clamp(36px, 11vw, 60px); color: #fff; -webkit-text-stroke: 0.08em var(--ink); paint-order: stroke fill; }
 .chest { font-size: clamp(28px, 8vw, 40px); }
 
+#banner, #pop { position: fixed; left: 50%; z-index: 4; pointer-events: none; white-space: nowrap; }
+#banner { top: 26%; font-size: clamp(44px, 13vw, 84px); color: #ffc93c; animation: banner 1.6s ease-out forwards; }
+#pop { top: 38%; font-size: clamp(30px, 9vw, 54px); animation: pop 0.9s ease-out forwards; }
+@keyframes banner {
+  0% { transform: translate(-50%, 0) scale(3); opacity: 0; }
+  15% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+  80% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -30px) scale(0.9); opacity: 0; }
+}
+@keyframes pop {
+  0% { transform: translate(-50%, 0) scale(0.4) rotate(-8deg); opacity: 0; }
+  20% { transform: translate(-50%, 0) scale(1.15) rotate(-4deg); opacity: 1; }
+  100% { transform: translate(-50%, -60px) scale(1) rotate(-4deg); opacity: 0; }
+}
+
 /* ---- Count bubbles ---- */
 #bubbles { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
 .bubble { position: absolute; left: 0; top: 0; min-width: 52px; padding: 4px 12px 6px; border-radius: 12px; text-align: center;

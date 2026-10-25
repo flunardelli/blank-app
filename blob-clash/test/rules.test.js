@@ -71,9 +71,26 @@ test('champion scales with the crowd; tapping speed needed scales with boss HP',
   assert.ok(requiredTapRate(80, 100, 1) > requiredTapRate(80, 50, 1));
 });
 
-test('the boss knocks out any champion in bossKillSeconds', () => {
-  const cfg = { bossKillSeconds: 8, bossPunchInterval: 1 };
-  assert.equal(bossPunchDamage(80, cfg) * 8, 80);
+test('every boss in the roster knocks out a champion in bossKillSeconds on average', async () => {
+  const { BOSSES } = await import('../src/bosses.js');
+  for (const { id, attack } of BOSSES) {
+    const perSecond = (bossPunchDamage(100, attack, { bossKillSeconds: 10 }) * attack.strikes) / attack.interval;
+    assert.ok(Math.abs(perSecond - 10) < 1e-9, `${id} deals ${perSecond}/s`);
+    assert.ok(attack.windup < attack.interval, `${id} winds up longer than its interval`);
+  }
+});
+
+test('chained taps build a combo whose 5th hit is a jump punch', async () => {
+  const { comboStep } = await import('../src/rules.js');
+  const cfg = { comboWindow: 0.5, finisherEvery: 5, jumpPunchMultiplier: 2.5 };
+  let state = { combo: 0, lastTap: -10 };
+  const hits = [];
+  for (let i = 0; i < 6; i++) {
+    state = comboStep(state, i * 0.2, cfg);
+    hits.push(state.multiplier);
+  }
+  assert.deepEqual(hits, [1, 1, 1, 1, 2.5, 1]);
+  assert.equal(comboStep(state, 5, cfg).combo, 1); // a pause breaks the combo
 });
 
 test('bonus multiplier grows with remaining health, snapped to 0.2 steps, capped at x5', () => {

@@ -2,17 +2,10 @@
 export const PALETTE = {
   player: { bottom: 0xffb52e, top: 0xff3a1c, splat: 0xff7a1a },
   enemy: { bottom: 0xe8506a, top: 0x9e1430, splat: 0x8f1d25 },
-  // Boss colour cycles per level, like the reference's red and green brawlers.
-  bosses: [
-    { bottom: 0xff8f8f, top: 0xd8283e },
-    { bottom: 0xb6ff4a, top: 0x2fbf1a },
-    { bottom: 0xd8a8ff, top: 0x7a3fe0 },
-  ],
   glove: 0x2f56d6,
   championGlove: 0xd8264a,
   button: 0x3ee05a,
   key: 0xffc21a,
-  hat: 0xffc83d,
   goodGlass: 0x6fd0ff,
   badGlass: 0xff7f8f,
   trackLight: '#fff5f9',
@@ -95,9 +88,12 @@ export const CONFIG = {
   // Boss fight: the crowd merges into one champion; every tap is a punch.
   boxing: {
     punchPerBlob: 1 / 30, // champion punch damage per blob in the crowd
-    bossKillSeconds: 10, // the boss knocks out any champion in this long: tap fast enough
-    bossPunchInterval: 1.2,
+    bossKillSeconds: 10, // every boss knocks out any champion in this long: tap fast enough
     tapCooldown: 0.06,
+    comboWindow: 0.6, // taps closer than this chain into a combo
+    finisherEvery: 5, // every 5th chained tap is a flying jump punch
+    jumpPunchMultiplier: 2.5,
+    openingMultiplier: 2.5, // the fight opens with a free flying punch
   },
   bonus: { maxMultiplier: 5, step: 0.2, tileDepth: 2.6 },
   keys: { perChest: 3, chestCoinsPerLevel: 60 },

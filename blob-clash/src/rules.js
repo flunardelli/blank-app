@@ -92,9 +92,20 @@ export function championStats(count, damageLevel, { punchPerBlob } = CONFIG.boxi
   return { hp: count, punch: count * punchPerBlob * damageFor(damageLevel) };
 }
 
-// The boss drains any champion in `bossKillSeconds`, so the player has to out-tap that clock.
-export function bossPunchDamage(championHp, { bossKillSeconds, bossPunchInterval } = CONFIG.boxing) {
-  return (championHp / bossKillSeconds) * bossPunchInterval;
+// Every boss drains any champion in `bossKillSeconds`, whatever its attack pattern:
+// slow bosses hit harder, combo bosses split the same damage over several strikes.
+export function bossPunchDamage(championHp, { interval, strikes }, { bossKillSeconds } = CONFIG.boxing) {
+  return ((championHp / bossKillSeconds) * interval) / strikes;
+}
+
+/**
+ * Advances the player's combo on a tap. Taps within `comboWindow` chain; every
+ * `finisherEvery`-th chained tap is a flying jump punch with extra damage.
+ */
+export function comboStep({ combo, lastTap }, now, { comboWindow, finisherEvery, jumpPunchMultiplier } = CONFIG.boxing) {
+  const chained = now - lastTap <= comboWindow ? combo + 1 : 1;
+  const finisher = chained % finisherEvery === 0;
+  return { combo: chained, lastTap: now, finisher, multiplier: finisher ? jumpPunchMultiplier : 1 };
 }
 
 /** Taps per second needed to knock the boss out before the boss wins. */

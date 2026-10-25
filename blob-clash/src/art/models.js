@@ -92,9 +92,92 @@ function angryEyes() {
   return face;
 }
 
-export function createBoss(colors) {
+// ---- Boss headgear: one builder per roster `headgear` value ------------------------
+const cap = (radius, color, extent = 0.55) => new THREE.Mesh(
+  new THREE.SphereGeometry(radius, 28, 16, 0, Math.PI * 2, 0, Math.PI * extent),
+  glossy(color, { roughness: 0.25, metalness: 0.15 }),
+);
+
+const HEADGEAR = {
+  football() {
+    const group = new THREE.Group();
+    const shell = cap(0.43, 0xd8262e, 0.6);
+    const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.435, 0.04, 8, 32, Math.PI), glossy(0xffffff));
+    stripe.rotation.y = Math.PI / 2;
+    const maskMaterial = glossy(0xdedede, { metalness: 0.5 });
+    const bars = [0.12, 0, -0.1].map((y) => {
+      const bar = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.025, 6, 20, Math.PI * 0.7), maskMaterial);
+      bar.rotation.set(Math.PI / 2, 0, Math.PI * 0.15);
+      bar.position.set(0, y - 0.1, 0.08);
+      return bar;
+    });
+    group.add(shell, stripe, ...bars);
+    group.position.y = 1.18;
+    return group;
+  },
+  spartan() {
+    const group = new THREE.Group();
+    const shell = cap(0.43, 0xe8b23a, 0.62);
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.32, 0.8), glossy(0xd8262e));
+    crest.position.set(0, 0.48, -0.05);
+    const cheeks = [-1, 1].map((side) => {
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.26), glossy(0xe8b23a, { metalness: 0.3 }));
+      plate.position.set(side * 0.36, -0.12, 0.18);
+      plate.rotation.y = side * 0.4;
+      return plate;
+    });
+    group.add(shell, crest, ...cheeks);
+    group.position.y = 1.18;
+    return group;
+  },
+  crown() {
+    const group = new THREE.Group();
+    const gold = glossy(0xffc21a, { metalness: 0.5, roughness: 0.2 });
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.18, 24, 1, true), gold);
+    band.material.side = THREE.DoubleSide;
+    group.add(band);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 8), gold);
+      spike.position.set(Math.sin(a) * 0.28, 0.18, Math.cos(a) * 0.28);
+      const gem = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), glossy(i % 2 ? 0xd8262e : 0x2f56d6));
+      gem.position.set(Math.sin(a) * 0.3, 0, Math.cos(a) * 0.3);
+      group.add(spike, gem);
+    }
+    group.position.y = 1.5;
+    return group;
+  },
+  viking() {
+    const group = new THREE.Group();
+    group.add(cap(0.42, 0x9aa3b5, 0.5));
+    const horn = glossy(0xfff1d0);
+    for (const side of [-1, 1]) {
+      const h = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.45, 12), horn);
+      h.position.set(side * 0.45, 0.22, 0);
+      h.rotation.z = -side * 0.9;
+      group.add(h);
+    }
+    group.position.y = 1.2;
+    return group;
+  },
+  mohawk() {
+    const group = new THREE.Group();
+    const hair = glossy(0xff2f8e);
+    for (let i = 0; i < 6; i++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.32, 8), hair);
+      spike.position.set(0, 0.12 + Math.sin((i / 5) * Math.PI) * 0.06, -0.3 + i * 0.12);
+      spike.rotation.x = (i - 2.5) * 0.18;
+      group.add(spike);
+    }
+    group.position.y = 1.45;
+    return group;
+  },
+};
+
+/** Builds a boss from a roster entry (see bosses.js). */
+export function createBoss({ colors, glove: gloveColor, headgear, body: [width, height] }) {
   const root = new THREE.Group();
-  const body = new THREE.Group(); // squash & stretch pivot
+  const body = new THREE.Group(); // squash & stretch / lean pivot
   root.add(body);
   const material = gummyMaterial();
 
@@ -104,7 +187,8 @@ export function createBoss(colors) {
     limb(0.15, 0.3, 0.2, 0.2, 0),
   ]), colors.bottom, colors.top, 0.1, 1.6), material);
   torso.castShadow = true;
-  body.add(torso, angryEyes());
+  body.add(torso, angryEyes(), HEADGEAR[headgear]());
+  body.scale.set(width, height, width);
 
   const arms = [-1, 1].map((side) => {
     const shoulder = new THREE.Group();
@@ -114,18 +198,13 @@ export function createBoss(colors) {
       material,
     );
     upper.castShadow = true;
-    const fist = glove();
+    const fist = glove(gloveColor);
     fist.position.y = -0.7;
     shoulder.add(upper, fist);
     shoulder.rotation.z = side * 0.35;
     body.add(shoulder);
     return shoulder;
   });
-
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.42, 20), glossy(PALETTE.hat));
-  hat.position.set(0.05, 1.68, 0);
-  hat.rotation.z = -0.25;
-  body.add(hat);
 
   root.scale.setScalar(3);
   return { root, body, arms };
