@@ -1,32 +1,28 @@
 // Short-lived visual effects. Each effect is a function(dt) that returns false when finished.
 import * as THREE from 'three';
-import { emojiTexture, puffTexture, splatTextures, starTexture } from './art/textures.js';
+import { emojiTexture, puffTexture, starTexture } from './art/textures.js';
 
-const dropGeometry = new THREE.SphereGeometry(1, 10, 8);
-const splatGeometry = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-const MAX_SPLATS = 90;
+const bitGeometry = new THREE.SphereGeometry(1, 12, 8);
+const WHITE = new THREE.Color(0xffffff);
 
 export class Effects {
   constructor(scene) {
     this.root = new THREE.Group();
     scene.add(this.root);
     this.active = [];
-    this.splats = [];
     this.materials = new Map();
     this.shake = 0;
   }
 
-  material(color, kind) {
-    const key = `${kind}:${color}`;
-    if (!this.materials.has(key)) {
-      this.materials.set(key, kind === 'drop'
-        ? new THREE.MeshPhysicalMaterial({ color, roughness: 0.3, clearcoat: 1 })
-        : splatTextures().map((map) => new THREE.MeshStandardMaterial({
-          color, map, transparent: true, depthWrite: false, roughness: 0.4,
-          polygonOffset: true, polygonOffsetFactor: -2,
-        })));
+  // Jelly bits are a light, shiny tint of the body colour: cartoon confetti, never gore.
+  bitMaterial(color) {
+    if (!this.materials.has(color)) {
+      const tint = new THREE.Color(color).lerp(WHITE, 0.5);
+      this.materials.set(color, new THREE.MeshPhysicalMaterial({
+        color: tint, emissive: tint, emissiveIntensity: 0.25, roughness: 0.2, clearcoat: 1,
+      }));
     }
-    return this.materials.get(key);
+    return this.materials.get(color);
   }
 
   add(effect) {
@@ -44,58 +40,40 @@ export class Effects {
   clear() {
     this.root.clear();
     this.active = [];
-    this.splats = [];
     this.shake = 0;
   }
 
-  // Paint splat decal on the floor; the oldest one is recycled past MAX_SPLATS.
-  splat(x, z, color, size = 1.6, y = 0.02) {
-    const materials = this.material(color, 'splat');
-    const mesh = this.splats.length >= MAX_SPLATS ? this.splats.shift() : new THREE.Mesh(splatGeometry);
-    mesh.material = materials[Math.floor(Math.random() * materials.length)];
-    mesh.position.set(x, y + Math.random() * 0.005, z);
-    mesh.rotation.y = Math.random() * Math.PI * 2;
-    mesh.receiveShadow = true;
-    this.root.add(mesh);
-    this.splats.push(mesh);
-    let t = 0;
-    this.add((dt) => {
-      t = Math.min(1, t + dt * 8);
-      mesh.scale.setScalar(size * (0.4 + 0.6 * t));
-      return t < 1;
-    });
-  }
-
+  // Shiny jelly bits that fly up, float and pop in mid-air (they never land on the floor).
   burst(position, color, { count = 10, speed = 6, size = 0.16 } = {}) {
-    const material = this.material(color, 'drop');
+    const material = this.bitMaterial(color);
     for (let i = 0; i < count; i++) {
-      const drop = new THREE.Mesh(dropGeometry, material);
-      drop.position.copy(position);
-      drop.scale.setScalar(size * (0.6 + Math.random() * 0.8));
+      const bit = new THREE.Mesh(bitGeometry, material);
+      bit.position.copy(position);
+      const scale = size * (0.6 + Math.random() * 0.8);
       const velocity = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8 + 0.5, Math.random() - 0.5)
         .normalize().multiplyScalar(speed * (0.5 + Math.random()));
-      this.root.add(drop);
-      let life = 0.8;
+      this.root.add(bit);
+      const life = 0.45 + Math.random() * 0.2;
+      let t = 0;
       this.add((dt) => {
-        life -= dt;
-        velocity.y -= 20 * dt;
-        drop.position.addScaledVector(velocity, dt);
-        if (drop.position.y < 0.05) {
-          drop.position.y = 0.05;
-          velocity.multiplyScalar(0.5);
-        }
-        drop.scale.multiplyScalar(1 - dt * 1.5);
-        if (life > 0) return true;
-        this.root.remove(drop);
+        t += dt;
+        velocity.y -= 9 * dt;
+        velocity.multiplyScalar(1 - dt * 2.5);
+        bit.position.addScaledVector(velocity, dt);
+        bit.scale.setScalar(scale * Math.max(0, 1 - (t / life) ** 2));
+        if (t < life) return true;
+        this.root.remove(bit);
         return false;
       });
     }
   }
 
-  // Blob death: a splash of drops plus a paint splat on the floor.
+  // A blob leaving the game: a puff of smoke, a couple of stars and jelly bits.
   pop(x, z, color, { y = 0.5, size = 1.4 } = {}) {
-    this.burst(new THREE.Vector3(x, y, z), color, { count: 6, speed: 5 });
-    this.splat(x, z, color, size * (0.8 + Math.random() * 0.5));
+    const at = new THREE.Vector3(x, y, z);
+    this.sprite(puffTexture(), at, { size: size * 0.9, velocity: new THREE.Vector3(0, 1.2, 0), life: 0.45 });
+    this.sprite(starTexture(), at.clone().setY(y + 0.5), { size: 0.5, velocity: new THREE.Vector3(0, 2.2, 0), life: 0.5, spin: 6 });
+    this.burst(at, color, { count: 4, speed: 4, size: 0.12 });
   }
 
   // A sprite that pops, drifts by `velocity` and fades out.

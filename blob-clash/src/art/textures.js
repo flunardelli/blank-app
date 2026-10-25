@@ -128,20 +128,6 @@ export function textTexture(text, { fill = '#ffffff', stroke = PALETTE.ink, heig
   });
 }
 
-// Paint splats: a big blob, satellite droplets and a few streaks. Drawn white, tinted per material.
-export const splatTextures = () => cached('splats', () => Array.from({ length: 3 }, () => {
-  const [canvas, ctx] = makeCanvas(128, 128);
-  ctx.fillStyle = '#ffffff';
-  const blob = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); };
-  for (let i = 0; i < 9; i++) blob(64 + (Math.random() - 0.5) * 30, 64 + (Math.random() - 0.5) * 30, 14 + Math.random() * 12);
-  for (let i = 0; i < 22; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const dist = 30 + Math.random() * 30;
-    blob(64 + Math.cos(a) * dist, 64 + Math.sin(a) * dist, 1.5 + Math.random() * 5);
-  }
-  return toTexture(canvas);
-}));
-
 export const melonFaceTexture = () => cached('melon', () => {
   const [canvas, ctx] = makeCanvas(256, 256);
   const ring = (r, color) => { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(128, 128, r, 0, Math.PI * 2); ctx.fill(); };

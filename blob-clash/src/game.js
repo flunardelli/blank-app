@@ -161,7 +161,7 @@ export class Game {
     if (this.player.count > before) {
       this.effects.emojis(new THREE.Vector3(this.player.center.x, 3, toZ(this.player.center.d)), 3);
     }
-    removed.forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    removed.forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
     const panel = gate.panels[chosen === gate.pair.left ? 0 : 1];
     this.effects.tween(0.35, (k) => {
       panel.glass.material.opacity = 0.5 + Math.sin(k * Math.PI) * 0.4;
@@ -234,7 +234,7 @@ export class Game {
     const { player } = this;
     const hidden = player.count - player.units.length;
     const hiddenLosses = Math.round(hidden * (indices.length / player.units.length));
-    player.kill(indices).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    player.kill(indices).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
     player.setCount(player.count - hiddenLosses);
     this.effects.shake = Math.max(this.effects.shake, shake);
   }
@@ -286,7 +286,6 @@ export class Game {
       this.effects.burst(at, 0xff8a2a, { count: 14, speed: 9, size: 0.22 });
       this.effects.burst(at, PALETTE.bomb, { count: 8, speed: 7, size: 0.18 });
       this.effects.dustRing(at.clone().setY(0.3), obstacle.blast);
-      this.effects.splat(at.x, at.z, PALETTE.bomb, obstacle.blast * 1.6);
       const victims = blastVictims(obstacle, grounded.map(({ u }) => u)).map((k) => grounded[k].i);
       if (victims.length) this.killUnits(victims, { shake: 0.8 });
       else this.effects.shake = Math.max(this.effects.shake, 0.6);
@@ -307,7 +306,7 @@ export class Game {
       if (!touching) continue;
       view.alive = false;
       view.mesh.visible = false;
-      this.effects.pop(x, toZ(walker.d), PALETTE.walker.splat, { size: 1.4 * view.mesh.userData.size });
+      this.effects.pop(x, toZ(walker.d), PALETTE.walker.bits, { size: 1.4 * view.mesh.userData.size });
       const nearest = player.units
         .map((u, i) => ({ i, dist: Math.hypot(u.x - x, u.d - walker.d) }))
         .sort((a, b) => a.dist - b.dist)
@@ -333,8 +332,8 @@ export class Game {
     const { player } = this;
     const enemy = s.target.crowd;
     [s.a, s.b] = clashStep(s.a, s.b, s.rate, dt);
-    player.setCount(Math.ceil(s.a)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
-    enemy.setCount(Math.ceil(s.b)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.enemy.splat));
+    player.setCount(Math.ceil(s.a)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
+    enemy.setCount(Math.ceil(s.b)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.enemy.bits));
     // Both crowds lean into each other.
     const gap = enemy.center.d - player.center.d;
     player.center.d += Math.min(gap * 0.5, CONFIG.crowd.forwardSpeed * 0.25 * dt);
@@ -474,8 +473,7 @@ export class Game {
     this.championAnim.react(heavy ? REACTIONS.hurtBig : REACTIONS.hurt);
     const at = this.champion.root.position.clone().setY(1.6 * this.championScale / 2 + 0.6);
     this.effects.impact(at, { stars: Math.round(3 * weight), scale: 0.8 * weight });
-    this.effects.burst(at, PALETTE.player.splat, { count: Math.round(8 * weight), speed: 7, size: 0.2 });
-    this.effects.splat(at.x + (Math.random() - 0.5) * 2, at.z + (Math.random() - 0.5) * 2, PALETTE.player.splat, 1.4, 0.3);
+    this.effects.burst(at, PALETTE.player.bits, { count: Math.round(8 * weight), speed: 7, size: 0.2 });
     if (impact === 'shockwave') this.effects.dustRing(this.view.boss.root.position.clone().setY(0.5), 3);
     this.effects.shake = 0.4 * weight;
     if (heavy) {
@@ -495,8 +493,7 @@ export class Game {
     this.hud.showFight(false);
     const { position } = this.champion.root;
     this.champion.root.visible = false;
-    this.effects.burst(position.clone().setY(1.5), PALETTE.player.splat, { count: 40, speed: 10, size: 0.3 });
-    this.effects.splat(position.x, position.z, PALETTE.player.splat, 5, 0.3);
+    this.effects.burst(position.clone().setY(1.5), PALETTE.player.bits, { count: 40, speed: 10, size: 0.3 });
     this.lose();
   }
 
@@ -512,7 +509,7 @@ export class Game {
     const height = 3 + (from.z - to.z) * 0.06;
     this.championAnim.play(CHAMPION_MOVES.cheer, { hold: true });
     this.bossAnim.play(KNOCKED_OUT, { hold: true });
-    this.effects.burst(new THREE.Vector3(0, 4, from.z), this.boss.colors.top, { count: 30, speed: 10, size: 0.3 });
+    this.effects.impact(new THREE.Vector3(0, 4, from.z), { stars: 10, scale: 1.8 });
     this.effects.shake = 1;
     this.effects.tween(1.4 + (from.z - to.z) * 0.012, (k) => {
       rig.anchor.lerpVectors(from, to, k);
@@ -522,8 +519,9 @@ export class Game {
       boss.rotation.x = -Math.PI / 2; // KO: flat on its back
       rig.anchor.y = 0.6;
       tile.tile.material.color.set(0x7cf05a);
-      this.effects.splat(to.x, to.z, this.boss.colors.top, 7, 0.08);
-      this.effects.burst(new THREE.Vector3(to.x, 1, to.z), this.boss.colors.top, { count: 30, speed: 9, size: 0.3 });
+      // Cartoon landing: a dust ring and a burst of stars (no splatter).
+      this.effects.dustRing(new THREE.Vector3(to.x, 0.5, to.z), 3);
+      this.effects.impact(new THREE.Vector3(to.x, 1.5, to.z), { stars: 8, scale: 1.6 });
       this.effects.shake = 1;
       this.effects.tween(0.9, () => {}, () => this.complete());
     });
@@ -551,7 +549,7 @@ export class Game {
 
   lose() {
     this.state = 'lost';
-    this.player.setCount(0).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    this.player.setCount(0).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
     this.save.coins += this.runCoins; // keys only count on a win
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
