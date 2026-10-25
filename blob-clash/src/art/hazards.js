@@ -1,8 +1,7 @@
 // Track hazards from the later phases: saw blades on rails, jump ramps, bombs and gray walkers.
 import * as THREE from 'three';
 import { CONFIG, PALETTE } from '../config.js';
-
-const glossy = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.35, ...extra });
+import { glossy } from './models.js';
 
 // Yellow ramp face with three white "jump" triangles pointing down the track (like the reference).
 let rampTexture;
