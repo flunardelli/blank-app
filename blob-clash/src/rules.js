@@ -57,6 +57,24 @@ export function sliderX({ edgeX, reach, speed, phase }, time) {
   return edgeX - Math.sign(edgeX) * inset;
 }
 
+// Saw blades and walkers swing across the track: x = range · sin(speed · t + phase).
+export const sweepX = ({ range, speed, phase }, time) => range * Math.sin(speed * time + phase);
+
+/** Height of a blob `distance` units after leaving a jump ramp; 0 once it has landed. */
+export function jumpLift(distance, length, height = CONFIG.obstacle.jumpHeight) {
+  if (distance < 0 || distance > length) return 0;
+  return Math.sin((distance / length) * Math.PI) * height;
+}
+
+export function onRamp(ramp, x) {
+  return Math.abs(x - ramp.x) <= ramp.halfWidth;
+}
+
+/** Indices of the bodies caught in a bomb's blast. */
+export function blastVictims(bomb, bodies) {
+  return bodies.flatMap((b, i) => (circlesOverlap(b.x, b.d, 0, bomb.x, bomb.d, bomb.blast) ? [i] : []));
+}
+
 /** True when a body moving from prevD to d crosses the obstacle line while overlapping it sideways. */
 export function crossesObstacle(obstacle, time, x, prevD, d, r) {
   return prevD < obstacle.d && d >= obstacle.d && obstacleHits(obstacle, time, x, obstacle.d, r);
@@ -67,6 +85,10 @@ export function obstacleHits(obstacle, time, x, d, r) {
     return circlesOverlap(x, d, r, sliderX(obstacle, time), obstacle.d, obstacle.radius);
   }
   if (obstacle.kind === 'trap') return Math.abs(d - obstacle.d) < obstacle.halfDepth + r; // full width
+  if (obstacle.kind === 'saw') {
+    return circleHitsBox(x, d, r, { x: sweepX(obstacle, time), d: obstacle.d, halfWidth: obstacle.radius, halfDepth: obstacle.halfDepth });
+  }
+  if (!obstacle.pads) return false; // ramps and bombs are handled by the game loop
   return obstacle.pads.some((pad) => circleHitsBox(x, d, r, { ...pad, d: obstacle.d }));
 }
 

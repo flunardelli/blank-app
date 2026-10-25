@@ -7,6 +7,7 @@ import {
   gummyMaterial, humanoidGeometry,
 } from './art/models.js';
 import { createBoss, createChampion } from './art/boxer.js';
+import { createBomb, createRamp, createSaw, createSawRail } from './art/hazards.js';
 import { bossForLevel } from './bosses.js';
 import { Crowd } from './crowd.js';
 
@@ -18,6 +19,8 @@ const shared = {
   enemyGeometry: humanoidGeometry(PALETTE.enemy),
   playerMaterial: gummyMaterial({ emissive: 0x3a0c00 }),
   enemyMaterial: gummyMaterial({ opacity: 0.82, emissive: 0x200006 }),
+  walkerGeometry: humanoidGeometry(PALETTE.walker),
+  walkerMaterial: gummyMaterial({ opacity: 0.85, emissive: 0x101018 }),
 };
 
 export function createPlayerCrowd(scene) {
@@ -68,6 +71,19 @@ export function buildLevelView(scene, level) {
       place(view.object, obstacle.d, obstacle.skin === 'glove' ? obstacle.edgeX : 0);
       return { obstacle, ...view };
     }
+    if (obstacle.kind === 'saw') {
+      const group = place(createSawRail(), obstacle.d);
+      const saw = createSaw(obstacle.radius);
+      group.add(saw.group);
+      return { obstacle, object: group, saw };
+    }
+    if (obstacle.kind === 'ramp') {
+      return { obstacle, object: place(createRamp(obstacle.halfWidth, obstacle.halfDepth), obstacle.d, obstacle.x) };
+    }
+    if (obstacle.kind === 'bomb') {
+      const bomb = createBomb(obstacle.radius);
+      return { obstacle, object: place(bomb.group, obstacle.d, obstacle.x), bomb, armed: true };
+    }
     if (obstacle.kind === 'trap') {
       const field = createSpikeField(obstacle.halfDepth);
       const button = createButton(obstacle.button.radius);
@@ -100,6 +116,14 @@ export function buildLevelView(scene, level) {
     return { enemy, crowd };
   });
 
+  const walkers = level.walkers.map((walker) => {
+    const mesh = new THREE.Mesh(shared.walkerGeometry, shared.walkerMaterial);
+    mesh.castShadow = true;
+    mesh.userData.size = walker.radius / CONFIG.walkers.radius;
+    mesh.scale.setScalar(mesh.userData.size);
+    return { walker, mesh: place(mesh, walker.d), alive: true };
+  });
+
   const key = place(createKey(), level.key.d, level.key.x);
   key.position.y = 1.2;
 
@@ -116,6 +140,7 @@ export function buildLevelView(scene, level) {
     obstacles,
     coins,
     enemies,
+    walkers,
     key,
     boss,
     ladder,
@@ -123,7 +148,7 @@ export function buildLevelView(scene, level) {
       enemies.forEach(({ crowd }) => crowd.mesh.dispose());
       scene.remove(root);
       root.traverse((object) => {
-        if (!object.isMesh) return;
+        if (!object.isMesh || Object.values(shared).includes(object.geometry)) return;
         object.geometry.dispose();
       });
     },

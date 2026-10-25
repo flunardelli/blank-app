@@ -2,6 +2,7 @@
 export const PALETTE = {
   player: { bottom: 0xffb52e, top: 0xff3a1c, splat: 0xff7a1a },
   enemy: { bottom: 0xe8506a, top: 0x9e1430, splat: 0x8f1d25 },
+  walker: { bottom: 0xe4e7f0, top: 0x8d93a6, splat: 0x9aa0b4 },
   glove: 0x2f56d6,
   championGlove: 0xd8264a,
   button: 0x3ee05a,
@@ -21,6 +22,13 @@ export const PALETTE = {
   mat: 0xa8687f,
   spikeBase: 0x4a2c9c,
   spike: 0xe8433f,
+  saw: 0x7d5ce0,
+  sawTeeth: 0xff7a3a,
+  sawRail: 0x2e2466,
+  ramp: 0xffc93a,
+  bomb: 0x2a2440,
+  bombPad: 0x5a3cb8,
+  fuse: 0xffb02e,
   coin: 0xffc21a,
   ink: '#1d1a3a',
 };
@@ -44,7 +52,7 @@ export const CONFIG = {
   gates: {
     addMin: 4,
     addMax: 12,
-    multipliers: [2, 2, 2, 3],
+    multipliers: [2, 2, 3],
     subMin: 2,
     subMax: 8,
     badChance: 0.45,
@@ -66,7 +74,12 @@ export const CONFIG = {
     trapHalfDepth: 1.4,
     trapButtonLead: 9,
     trapButtonRadius: 0.9,
-    weights: { slider: 0.4, spikes: 0.3, trap: 0.3 },
+    // Hazard pool: each kind unlocks at a level, and every level features one kind (weight × featuredBoost)
+    // taken in turn from `featured`, so consecutive phases feel different.
+    weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35 },
+    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3 },
+    featured: ['slider', 'saw', 'bombs', 'jump', 'trap', 'spikes'],
+    featuredBoost: 3,
     spikeHalfDepth: 1.1,
     // Spike pads hug the track edges (like the reference): [centre x, half width] per pad.
     spikeLayouts: [
@@ -75,6 +88,32 @@ export const CONFIG = {
       [[2.9, 2.1]], // right half
     ],
     minSpikeGap: 4.5,
+    // Saw: a blade spinning on a rail across the track, sliding from side to side.
+    sawRadius: 0.9,
+    sawHalfDepth: 0.25,
+    sawSpeed: 1.0,
+    // Jump: a ramp launches the blobs that cross it over the saws placed right behind it.
+    rampHalfWidth: 3.4,
+    rampHalfDepth: 1.4,
+    jumpLength: 9,
+    jumpHeight: 2.6,
+    airborneHeight: 0.6, // above this a blob clears ground hazards
+    // Bombs: stepping into the trigger radius blows up every blob within the blast radius.
+    bombRadius: 0.6,
+    bombBlast: 1.5,
+    bombRowGap: 5,
+  },
+  // Gray walkers pacing across the track; each one takes `strength` blobs with it on contact.
+  walkers: {
+    fromLevel: 2,
+    radius: 0.45,
+    speed: 1.1,
+    perGroupMin: 1,
+    perGroupMax: 3, // reached gradually: one more walker per group every two phases
+    bruteFromLevel: 4, // big walkers that take several blobs
+    bruteChance: 0.35,
+    bruteStrength: 5,
+    bruteScale: 1.7,
   },
   coins: { perRow: 5, spacing: 1.6, value: 10 },
   hud: { bubbleRange: 42 }, // only label crowds this close, so the horizon stays clean

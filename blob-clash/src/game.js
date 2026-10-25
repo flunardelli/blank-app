@@ -9,8 +9,9 @@ import { applyPose } from './art/boxer.js';
 import { bossForLevel } from './bosses.js';
 import { attackStats, BOSS_MOVES, CHAMPION_MOVES, GUARD, idlePose, KNOCKED_OUT, REACTIONS } from './moves.js';
 import {
-  applyGate, bonusMultiplier, bossPunchDamage, championStats, chestReward, chooseGate, clashRate, clashStep,
-  comboStep, crossesObstacle, pressesButton, rewardCoins, sliderX, startBlobsFor, upgradeCost,
+  applyGate, blastVictims, bonusMultiplier, bossPunchDamage, championStats, chestReward, chooseGate, circlesOverlap,
+  clashRate, clashStep, comboStep, crossesObstacle, jumpLift, onRamp, pressesButton, rewardCoins, sliderX,
+  startBlobsFor, sweepX, upgradeCost,
 } from './rules.js';
 import { loadSave, writeSave } from './save.js';
 
@@ -122,6 +123,7 @@ export class Game {
     else if (this.state === 'skirmish') this.updateSkirmish(dt);
     else if (this.state === 'boxing') this.updateBoxing(dt);
 
+    this.updateJumps();
     this.animateScene(dt);
     this.player.update(dt, this.time);
     this.view.enemies.forEach(({ crowd }) => crowd.update(dt, this.time));
@@ -139,7 +141,10 @@ export class Game {
     this.checkGates();
     this.checkPickups();
     this.checkButtons();
+    this.checkJumps();
     this.checkObstacles();
+    this.checkBombs();
+    this.checkWalkers();
     this.checkEnemies();
 
     if (player.count <= 0) this.lose();
@@ -199,7 +204,7 @@ export class Game {
   checkButtons() {
     const { unitRadius } = CONFIG.crowd;
     for (const trap of this.view.obstacles) {
-      if (!trap.armed) continue;
+      if (trap.obstacle.kind !== 'trap' || !trap.armed) continue;
       const { button } = trap.obstacle;
       if (Math.abs(button.d - this.player.center.d) > this.player.radius + 2) continue;
       if (!this.player.units.some((u) => pressesButton(button, u.x, u.d, unitRadius))) continue;
@@ -212,25 +217,105 @@ export class Game {
     }
   }
 
-  checkObstacles() {
+  nearObstacles(kind, margin = 3) {
+    const { center } = this.player;
+    const reach = this.player.radius + margin;
+    return this.view.obstacles.filter(({ obstacle, armed }) =>
+      armed !== false && (!kind || obstacle.kind === kind) && Math.abs(obstacle.d - center.d) < reach);
+  }
+
+  // Blobs high enough in a jump fly over every ground hazard.
+  grounded(unit) {
+    return (unit.lift ?? 0) < CONFIG.obstacle.airborneHeight;
+  }
+
+  /** Kills visible bodies by index; hidden ones (count > maxVisible) die with the same share. */
+  killUnits(indices, { shake = 0.4 } = {}) {
     const { player } = this;
-    const near = this.view.obstacles.filter(({ obstacle, armed }) =>
-      armed !== false && Math.abs(obstacle.d - player.center.d) < player.radius + 3);
+    const hidden = player.count - player.units.length;
+    const hiddenLosses = Math.round(hidden * (indices.length / player.units.length));
+    player.kill(indices).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    player.setCount(player.count - hiddenLosses);
+    this.effects.shake = Math.max(this.effects.shake, shake);
+  }
+
+  // Bodies crossing a ramp's line take off; each one follows its own arc (see updateJumps).
+  checkJumps() {
+    const ramps = this.nearObstacles('ramp');
+    for (const u of this.player.units) {
+      for (const { obstacle } of ramps) {
+        if (u.prevD < obstacle.d && u.d >= obstacle.d && onRamp(obstacle, u.x) && this.grounded(u)) u.jump = obstacle;
+      }
+    }
+  }
+
+  // Runs in every state, so a crowd that meets enemies mid-jump still comes down.
+  updateJumps() {
+    for (const u of this.player.units) {
+      if (!u.jump) continue;
+      u.lift = jumpLift(u.d - u.jump.d, u.jump.length);
+      if (u.lift === 0) delete u.jump;
+    }
+  }
+
+  checkObstacles() {
+    const near = this.nearObstacles();
     if (!near.length) return;
     const { unitRadius } = CONFIG.crowd;
     // Each body is tested once, when it crosses the obstacle line. Testing overlap every frame
     // would wipe the crowd: survivors re-pack into the dead bodies' slots, right on the spikes.
     const hits = [];
-    player.units.forEach((u, i) => {
+    this.player.units.forEach((u, i) => {
+      if (!this.grounded(u)) return;
       if (near.some(({ obstacle }) => crossesObstacle(obstacle, this.time, u.x, u.prevD, u.d, unitRadius))) hits.push(i);
     });
-    if (!hits.length) return;
-    // Bodies we don't draw (count > maxVisible) die with the same share as the visible ones.
-    const hidden = player.count - player.units.length;
-    const hiddenLosses = Math.round(hidden * (hits.length / player.units.length));
-    player.kill(hits).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
-    player.setCount(player.count - hiddenLosses);
-    this.effects.shake = Math.max(this.effects.shake, 0.4);
+    if (hits.length) this.killUnits(hits);
+  }
+
+  // A bomb goes off when any blob touches it and takes every grounded blob in its blast.
+  checkBombs() {
+    const { unitRadius } = CONFIG.crowd;
+    const grounded = this.player.units.map((u, i) => ({ u, i })).filter(({ u }) => this.grounded(u));
+    for (const view of this.nearObstacles('bomb')) {
+      const { obstacle } = view;
+      if (!grounded.some(({ u }) => circlesOverlap(u.x, u.d, unitRadius, obstacle.x, obstacle.d, obstacle.radius))) continue;
+      view.armed = false;
+      view.object.visible = false;
+      const at = new THREE.Vector3(obstacle.x, 0.8, toZ(obstacle.d));
+      this.effects.impact(at, { stars: 5, scale: 1.3 });
+      this.effects.burst(at, 0xff8a2a, { count: 14, speed: 9, size: 0.22 });
+      this.effects.burst(at, PALETTE.bomb, { count: 8, speed: 7, size: 0.18 });
+      this.effects.dustRing(at.clone().setY(0.3), obstacle.blast);
+      this.effects.splat(at.x, at.z, PALETTE.bomb, obstacle.blast * 1.6);
+      const victims = blastVictims(obstacle, grounded.map(({ u }) => u)).map((k) => grounded[k].i);
+      if (victims.length) this.killUnits(victims, { shake: 0.8 });
+      else this.effects.shake = Math.max(this.effects.shake, 0.6);
+      return; // indices are stale after a kill; any other bomb waits for the next frame
+    }
+  }
+
+  // Each gray walker that bumps into the crowd takes `strength` blobs down with it.
+  checkWalkers() {
+    const { unitRadius } = CONFIG.crowd;
+    const { player } = this;
+    for (const view of this.view.walkers) {
+      const { walker } = view;
+      if (!view.alive || Math.abs(walker.d - player.center.d) > player.radius + walker.radius + 1) continue;
+      const x = sweepX(walker, this.time);
+      const touching = player.units.some((u) => this.grounded(u)
+        && circlesOverlap(u.x, u.d, unitRadius, x, walker.d, walker.radius));
+      if (!touching) continue;
+      view.alive = false;
+      view.mesh.visible = false;
+      this.effects.pop(x, toZ(walker.d), PALETTE.walker.splat, { size: 1.4 * view.mesh.userData.size });
+      const nearest = player.units
+        .map((u, i) => ({ i, dist: Math.hypot(u.x - x, u.d - walker.d) }))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, walker.strength)
+        .map(({ i }) => i);
+      this.killUnits(nearest, { shake: 0.25 * walker.strength });
+      return; // indices are stale after a kill
+    }
   }
 
   checkEnemies() {
@@ -489,6 +574,29 @@ export class Game {
         object.position.x = x;
         object.rotation.z = Math.sign(obstacle.edgeX) * (inset / obstacle.reach) * 0.6;
       }
+    }
+    for (const { obstacle, saw, bomb } of this.view.obstacles) {
+      if (saw) {
+        const x = sweepX(obstacle, this.time);
+        saw.group.position.x = x;
+        // Roll in the direction of travel (the derivative of sweepX).
+        saw.blade.rotation.z -= dt * 14 * Math.sign(Math.cos(obstacle.speed * this.time + obstacle.phase) || 1);
+      }
+      if (bomb) {
+        const fizz = 0.8 + Math.abs(Math.sin(this.time * 18 + obstacle.d)) * 0.6;
+        bomb.spark.scale.setScalar(fizz);
+        bomb.ring.material.emissiveIntensity = 0.5 + Math.sin(this.time * 5 + obstacle.x) * 0.4;
+      }
+    }
+    for (const { walker, mesh, alive } of this.view.walkers) {
+      if (!alive) continue;
+      const step = this.time * 9 + walker.phase;
+      const heading = Math.cos(walker.speed * this.time + walker.phase); // sign of the walking direction
+      mesh.position.x = sweepX(walker, this.time);
+      mesh.position.y = Math.abs(Math.sin(step)) * 0.15;
+      // Turn smoothly into the walking direction, waddling side to side.
+      mesh.rotation.y = THREE.MathUtils.lerp(mesh.rotation.y, Math.sign(heading || 1) * Math.PI / 2, Math.min(1, dt * 8));
+      mesh.rotation.z = Math.sin(step) * 0.12;
     }
     for (const mesh of this.view.coins.values()) mesh.rotation.y += dt * 3;
     this.view.key.rotation.y += dt * 2;

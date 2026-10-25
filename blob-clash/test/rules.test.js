@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  applyGate, bestGate, bonusMultiplier, bossPunchDamage, championStats, circleHitsBox, clashStep,
+  applyGate, bestGate, blastVictims, jumpLift, onRamp, sweepX, bonusMultiplier, bossPunchDamage, championStats, circleHitsBox, clashStep,
   crowdSpacing, formationRadius, formatCoins, gateLabel, obstacleHits, pressesButton, requiredTapRate,
   rewardCoins, upgradeCost,
 } from '../src/rules.js';
@@ -118,4 +118,28 @@ test('obstacles hit a body only on the frame it crosses the obstacle line', asyn
   assert.ok(crossesObstacle(spikes, 0, 0, 9.9, 10.1, 0.3));
   assert.ok(!crossesObstacle(spikes, 0, 0, 10.1, 10.3, 0.3)); // already past: no second hit
   assert.ok(!crossesObstacle(spikes, 0, 2, 9.9, 10.1, 0.3)); // crossed beside the pad
+});
+
+test('saws sweep the whole track and cut what they touch', () => {
+  const saw = { kind: 'saw', d: 10, radius: 0.9, halfDepth: 0.25, range: 4.5, speed: 1, phase: 0 };
+  assert.equal(sweepX(saw, 0), 0);
+  assert.ok(Math.abs(sweepX(saw, Math.PI / 2) - 4.5) < 1e-9);
+  assert.ok(obstacleHits(saw, 0, 0.5, 10, 0.3));
+  assert.ok(!obstacleHits(saw, 0, 2, 10, 0.3));
+  assert.ok(obstacleHits(saw, Math.PI / 2, 4, 10, 0.3));
+});
+
+test('jumps arc up and land; only blobs on the ramp take off', () => {
+  assert.equal(jumpLift(-1, 9), 0);
+  assert.equal(jumpLift(10, 9), 0);
+  assert.ok(Math.abs(jumpLift(4.5, 9, 2.6) - 2.6) < 1e-9);
+  const ramp = { x: 1.6, halfWidth: 3.4 };
+  assert.ok(onRamp(ramp, -1.7) && onRamp(ramp, 4.9));
+  assert.ok(!onRamp(ramp, -2.5));
+});
+
+test('a bomb blast takes everyone inside its radius', () => {
+  const bomb = { x: 0, d: 10, blast: 2 };
+  const bodies = [{ x: 0, d: 10 }, { x: 1.5, d: 11 }, { x: 3, d: 10 }, { x: 0, d: 12.5 }];
+  assert.deepEqual(blastVictims(bomb, bodies), [0, 1]);
 });
