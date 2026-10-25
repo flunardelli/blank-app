@@ -73,10 +73,12 @@ test('champion scales with the crowd; tapping speed needed scales with boss HP',
 
 test('every boss in the roster knocks out a champion in bossKillSeconds on average', async () => {
   const { BOSSES } = await import('../src/bosses.js');
+  const { attackStats } = await import('../src/moves.js');
   for (const { id, attack } of BOSSES) {
-    const perSecond = (bossPunchDamage(100, attack, { bossKillSeconds: 10 }) * attack.strikes) / attack.interval;
+    const stats = attackStats(attack);
+    const perSecond = (bossPunchDamage(100, stats, { bossKillSeconds: 10 }) * stats.strikes) / stats.interval;
     assert.ok(Math.abs(perSecond - 10) < 1e-9, `${id} deals ${perSecond}/s`);
-    assert.ok(attack.windup < attack.interval, `${id} winds up longer than its interval`);
+    assert.ok(stats.windup < stats.interval, `${id} winds up longer than its interval`);
   }
 });
 

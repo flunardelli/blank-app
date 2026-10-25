@@ -21,10 +21,10 @@ export function gummyMaterial({ opacity = 1, emissive = 0x000000 } = {}) {
   });
 }
 
-const glossy = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.35, ...extra });
+export const glossy = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.35, ...extra });
 
 // Vertical colour gradient baked into vertex colours (bottom -> top), like the jelly in the reference.
-function paintGradient(geometry, bottom, top, y0, y1) {
+export function paintGradient(geometry, bottom, top, y0, y1) {
   const position = geometry.getAttribute('position');
   const colors = new Float32Array(position.count * 3);
   const [low, high, out] = [new THREE.Color(bottom), new THREE.Color(top), new THREE.Color()];
@@ -37,15 +37,21 @@ function paintGradient(geometry, bottom, top, y0, y1) {
 }
 
 // ---- Gummy humanoid (one merged geometry, instanced for the whole crowd) --------
-function beanGeometry(segments = 16) {
+export function beanGeometry(segments = 16) {
   // Chubby jelly-bean: wide hips, round head, no neck.
   const outline = [[0, 0.26], [0.3, 0.29], [0.46, 0.42], [0.52, 0.64], [0.5, 0.9], [0.44, 1.1],
     [0.34, 1.26], [0.2, 1.36], [0, 1.39]].map(([x, y]) => new THREE.Vector2(x, y));
   return new THREE.LatheGeometry(new THREE.SplineCurve(outline).getPoints(20), segments);
 }
 
-function limb(radius, length, x, y, tilt) {
+export function limb(radius, length, x, y, tilt) {
   return new THREE.CapsuleGeometry(radius, length, 4, 8).rotateZ(tilt).translate(x, y, 0);
+}
+
+// Melting drops that hang off a jelly body, merged into its geometry.
+export function dripGeometries(spots, segments = 8) {
+  return spots.map(([x, y, z, size]) => new THREE.SphereGeometry(size, segments, segments - 2)
+    .scale(1, 1.7, 1).translate(x, y - size * 0.6, z));
 }
 
 export function humanoidGeometry({ bottom, top }) {
@@ -55,177 +61,34 @@ export function humanoidGeometry({ bottom, top }) {
     limb(0.14, 0.24, 0.21, 0.24, -0.06),
     limb(0.13, 0.34, -0.6, 0.74, 0.95),
     limb(0.13, 0.34, 0.6, 0.74, -0.95),
+    ...dripGeometries([[0.36, 0.42, 0.18, 0.07], [-0.3, 0.38, -0.22, 0.06], [0.82, 0.92, 0, 0.06]]),
   ];
   return paintGradient(mergeGeometries(parts), bottom, top, 0.1, 1.35);
 }
 
-// ---- Boss: big gummy brawler with boxing gloves and a party hat ------------------
+// ---- Boxing glove (bosses, champion and the spring-glove obstacle) ---------------
 export function glove(color = PALETTE.glove) {
   const group = new THREE.Group();
-  const material = glossy(color, { roughness: 0.25, metalness: 0.05 });
-  const fist = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 16), material);
+  const material = glossy(color, { roughness: 0.22, metalness: 0.05 });
+  const trim = glossy(0xffffff, { roughness: 0.3 });
+  const fist = new THREE.Mesh(new THREE.SphereGeometry(0.3, 24, 18), material);
   fist.scale.set(1, 1.1, 1.15);
-  const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), material);
-  thumb.position.set(0.18, 0.1, 0.15);
-  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.18, 16), material);
+  const knuckles = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 14), material);
+  knuckles.scale.set(1.15, 0.9, 1);
+  knuckles.position.set(0, -0.14, 0.04);
+  const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.12, 4, 10), material);
+  thumb.position.set(0.2, 0.06, 0.16);
+  thumb.rotation.set(0.5, 0, -0.5);
+  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.24, 0.24, 20), material);
   cuff.position.y = 0.32;
-  group.add(fist, thumb, cuff);
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.225, 0.035, 8, 24), trim);
+  band.rotation.x = Math.PI / 2;
+  band.position.y = 0.3;
+  const lace = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.05), trim);
+  lace.position.set(0, 0.32, -0.23);
+  group.add(fist, knuckles, thumb, cuff, band, lace);
   group.traverse((o) => { o.castShadow = true; });
   return group;
-}
-
-function angryEyes() {
-  const face = new THREE.Group();
-  const white = glossy(0xffffff);
-  const black = glossy(0x111111);
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.09, 14, 10), white);
-    eye.position.set(side * 0.14, 1.2, 0.36);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), black);
-    pupil.position.z = 0.06;
-    eye.add(pupil);
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.04), black);
-    brow.position.set(side * 0.14, 1.32, 0.4);
-    brow.rotation.z = side * -0.5;
-    face.add(eye, brow);
-  }
-  return face;
-}
-
-// ---- Boss headgear: one builder per roster `headgear` value ------------------------
-const cap = (radius, color, extent = 0.55) => new THREE.Mesh(
-  new THREE.SphereGeometry(radius, 28, 16, 0, Math.PI * 2, 0, Math.PI * extent),
-  glossy(color, { roughness: 0.25, metalness: 0.15 }),
-);
-
-const HEADGEAR = {
-  football() {
-    const group = new THREE.Group();
-    const shell = cap(0.43, 0xd8262e, 0.6);
-    const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.435, 0.04, 8, 32, Math.PI), glossy(0xffffff));
-    stripe.rotation.y = Math.PI / 2;
-    const maskMaterial = glossy(0xdedede, { metalness: 0.5 });
-    const bars = [0.12, 0, -0.1].map((y) => {
-      const bar = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.025, 6, 20, Math.PI * 0.7), maskMaterial);
-      bar.rotation.set(Math.PI / 2, 0, Math.PI * 0.15);
-      bar.position.set(0, y - 0.1, 0.08);
-      return bar;
-    });
-    group.add(shell, stripe, ...bars);
-    group.position.y = 1.18;
-    return group;
-  },
-  spartan() {
-    const group = new THREE.Group();
-    const shell = cap(0.43, 0xe8b23a, 0.62);
-    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.32, 0.8), glossy(0xd8262e));
-    crest.position.set(0, 0.48, -0.05);
-    const cheeks = [-1, 1].map((side) => {
-      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.26), glossy(0xe8b23a, { metalness: 0.3 }));
-      plate.position.set(side * 0.36, -0.12, 0.18);
-      plate.rotation.y = side * 0.4;
-      return plate;
-    });
-    group.add(shell, crest, ...cheeks);
-    group.position.y = 1.18;
-    return group;
-  },
-  crown() {
-    const group = new THREE.Group();
-    const gold = glossy(0xffc21a, { metalness: 0.5, roughness: 0.2 });
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.18, 24, 1, true), gold);
-    band.material.side = THREE.DoubleSide;
-    group.add(band);
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 8), gold);
-      spike.position.set(Math.sin(a) * 0.28, 0.18, Math.cos(a) * 0.28);
-      const gem = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), glossy(i % 2 ? 0xd8262e : 0x2f56d6));
-      gem.position.set(Math.sin(a) * 0.3, 0, Math.cos(a) * 0.3);
-      group.add(spike, gem);
-    }
-    group.position.y = 1.5;
-    return group;
-  },
-  viking() {
-    const group = new THREE.Group();
-    group.add(cap(0.42, 0x9aa3b5, 0.5));
-    const horn = glossy(0xfff1d0);
-    for (const side of [-1, 1]) {
-      const h = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.45, 12), horn);
-      h.position.set(side * 0.45, 0.22, 0);
-      h.rotation.z = -side * 0.9;
-      group.add(h);
-    }
-    group.position.y = 1.2;
-    return group;
-  },
-  mohawk() {
-    const group = new THREE.Group();
-    const hair = glossy(0xff2f8e);
-    for (let i = 0; i < 6; i++) {
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.32, 8), hair);
-      spike.position.set(0, 0.12 + Math.sin((i / 5) * Math.PI) * 0.06, -0.3 + i * 0.12);
-      spike.rotation.x = (i - 2.5) * 0.18;
-      group.add(spike);
-    }
-    group.position.y = 1.45;
-    return group;
-  },
-};
-
-/** Builds a boss from a roster entry (see bosses.js). */
-export function createBoss({ colors, glove: gloveColor, headgear, body: [width, height] }) {
-  const root = new THREE.Group();
-  const body = new THREE.Group(); // squash & stretch / lean pivot
-  root.add(body);
-  const material = gummyMaterial();
-
-  const torso = new THREE.Mesh(paintGradient(mergeGeometries([
-    beanGeometry(28).scale(1, 1.05, 0.85),
-    limb(0.15, 0.3, -0.2, 0.2, 0),
-    limb(0.15, 0.3, 0.2, 0.2, 0),
-  ]), colors.bottom, colors.top, 0.1, 1.6), material);
-  torso.castShadow = true;
-  body.add(torso, angryEyes(), HEADGEAR[headgear]());
-  body.scale.set(width, height, width);
-
-  const arms = [-1, 1].map((side) => {
-    const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.42, 1.0, 0);
-    const upper = new THREE.Mesh(
-      paintGradient(new THREE.CapsuleGeometry(0.12, 0.45, 4, 10).translate(0, -0.3, 0), colors.bottom, colors.top, -0.6, 0),
-      material,
-    );
-    upper.castShadow = true;
-    const fist = glove(gloveColor);
-    fist.position.y = -0.7;
-    shoulder.add(upper, fist);
-    shoulder.rotation.z = side * 0.35;
-    body.add(shoulder);
-    return shoulder;
-  });
-
-  root.scale.setScalar(3);
-  return { root, body, arms };
-}
-
-// The crowd merged into one boxer: the player's gummy body plus red gloves it can swing.
-export function createChampion(geometry, material) {
-  const root = new THREE.Group();
-  const body = new THREE.Mesh(geometry, material);
-  body.castShadow = true;
-  root.add(body);
-  const gloves = [-1, 1].map((side) => {
-    const g = glove(PALETTE.championGlove);
-    g.scale.setScalar(0.85);
-    g.rotation.x = -Math.PI / 2; // fist forward, cuff towards the body
-    g.position.set(side * 0.55, 0.85, 0.45);
-    g.userData.rest = g.position.clone();
-    root.add(g);
-    return g;
-  });
-  return { root, body, gloves };
 }
 
 // ---- Obstacles ------------------------------------------------------------------
