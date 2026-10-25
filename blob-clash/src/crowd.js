@@ -75,7 +75,7 @@ export class Crowd {
       const t = time * 11 + unit.phase;
       const moving = this.mood === 'run' || this.mood === 'fight';
       const hop = this.mood === 'cheer' ? Math.abs(Math.sin(time * 6 + unit.phase)) * 0.6 : 0;
-      position.set(unit.x, (moving ? Math.abs(Math.sin(t)) * 0.18 : 0) + hop, -unit.d);
+      position.set(unit.x, (moving ? Math.abs(Math.sin(t)) * 0.18 : 0) + hop + (unit.lift ?? 0), -unit.d);
       euler.set(moving ? -0.15 : 0, this.facing, moving ? Math.sin(t) * 0.14 : Math.sin(time * 2 + unit.phase) * 0.05);
       rotation.setFromEuler(euler);
       // Pop in with a little overshoot, and squash on every step.

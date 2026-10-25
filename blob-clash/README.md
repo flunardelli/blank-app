@@ -10,8 +10,14 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 ## Como jogar
 - Segure e arraste (ou ← → / A D) para mover sua **multidão de bonequinhos de gelatina**. O número no balão azul é o tamanho dela.
 - **Portões +N / ×N** aumentam a multidão; os vermelhos (−N / ÷N) diminuem. A metade que você atravessa vale.
+  Um par nunca repete a operação (nada de "×2 | ×2"): quando os dois lados são bons, um é × e o outro é +.
 - **Obstáculos:** fatias de melancia e **luvas de boxe em mola** que entram pelas bordas, e espinhos nas laterais.
 - **Armadilha com botão:** espinhos na pista inteira. Pise no **botão verde** antes deles para recolhê-los, senão a multidão morre.
+- **Serras** (fase 2+) deslizam num trilho de um lado ao outro da pista.
+- **Pulo** (fase 2+): uma rampa amarela lança quem passa por ela por cima das serras logo atrás; quem desvia da rampa encara as serras.
+- **Bombas** (fase 3+): duas fileiras, cada uma agrupada de um lado (alternando), com espaço para a maior multidão passar pelo outro. Encostou, explode e leva todo mundo no raio.
+- **Bonecos cinza** (fase 2+) andam de um lado para o outro; cada um que esbarra leva um blob junto. A partir da fase 4 aparecem os **brutamontes** (levam 5).
+- Cada fase tem um **obstáculo em destaque** (em ciclo: luvas/melancias, serras, bombas, pulo, armadilha, espinhos), então fases seguidas não se repetem.
 - **Multidões vermelhas** bloqueiam a pista: os dois lados se anulam um a um.
 - **Moedas** na pista e **uma chave por fase**. Com 3 chaves, abre um **baú** de moedas.
 - **Boss:** a multidão se funde num campeão de luvas, que abre a luta com um **soco voador**.
@@ -57,6 +63,7 @@ Testes (Node 18+): `npm test`
 | `src/level.js` | Gera a fase como **dados** (portões, obstáculos, moedas, inimigos, Boss) | não |
 | `src/art/textures.js` | Texturas desenhadas em canvas (água, listras, texto com contorno, respingos) | sim |
 | `src/art/models.js` | Modelos procedurais: bonequinho de gelatina, Boss, melancia, espinhos, ringue, escada de bônus | sim |
+| `src/art/hazards.js` | Serra com trilho, rampa de pulo, bomba | sim |
 | `src/crowd.js` | Multidão como um único `InstancedMesh` | sim |
 | `src/levelView.js` | Converte os dados da fase em objetos 3D | sim |
 | `src/game.js` | Máquina de estados `menu → running ⇄ skirmish → merge → boxing → bonus → complete / lost` | sim |

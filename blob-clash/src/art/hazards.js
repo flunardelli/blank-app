@@ -1,0 +1,118 @@
+// Track hazards from the later phases: saw blades on rails, jump ramps, bombs and gray walkers.
+import * as THREE from 'three';
+import { CONFIG, PALETTE } from '../config.js';
+import { glossy } from './models.js';
+
+// Yellow ramp face with three white "jump" triangles pointing down the track (like the reference).
+let rampTexture;
+function getRampTexture() {
+  if (rampTexture) return rampTexture;
+  const canvas = Object.assign(document.createElement('canvas'), { width: 256, height: 128 });
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = `#${PALETTE.ramp.toString(16).padStart(6, '0')}`;
+  ctx.fillRect(0, 0, 256, 128);
+  ctx.fillStyle = '#ffffff';
+  for (const cx of [48, 128, 208]) {
+    ctx.beginPath();
+    ctx.moveTo(cx, 22);
+    ctx.lineTo(cx + 30, 106);
+    ctx.lineTo(cx - 30, 106);
+    ctx.closePath();
+    ctx.fill();
+  }
+  rampTexture = new THREE.CanvasTexture(canvas);
+  rampTexture.colorSpace = THREE.SRGBColorSpace;
+  rampTexture.anisotropy = 4;
+  return rampTexture;
+}
+
+/** Wedge rising towards the far end; its top face carries the triangles. */
+export function createRamp(halfWidth, halfDepth, height = 0.7) {
+  const depth = halfDepth * 2;
+  const shape = new THREE.Shape([new THREE.Vector2(-halfDepth, 0), new THREE.Vector2(halfDepth, 0), new THREE.Vector2(halfDepth, height)]);
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: halfWidth * 2, bevelEnabled: false });
+  // Shape lies in x/y with depth along z: turn it so the slope climbs along -z (down the track).
+  geometry.translate(0, 0, -halfWidth).rotateY(Math.PI / 2);
+  const side = glossy(0xe0a020);
+  const wedge = new THREE.Mesh(geometry, side);
+  wedge.castShadow = wedge.receiveShadow = true;
+  // Textured plane laid on the slope.
+  const slope = Math.atan2(height, depth);
+  const face = new THREE.Mesh(
+    new THREE.PlaneGeometry(halfWidth * 2, Math.hypot(depth, height)),
+    new THREE.MeshStandardMaterial({ map: getRampTexture(), roughness: 0.5 }),
+  );
+  face.rotation.x = -Math.PI / 2 + slope;
+  face.position.set(0, height / 2 + 0.01, 0);
+  face.receiveShadow = true;
+  const group = new THREE.Group();
+  group.add(wedge, face);
+  return group;
+}
+
+/** Dark rail across the whole track that a saw blade slides along. */
+export function createSawRail() {
+  const width = CONFIG.track.width + 0.4;
+  const group = new THREE.Group();
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(width, 0.12, 0.5), glossy(PALETTE.sawRail));
+  rail.position.y = 0.06;
+  const lips = [-1, 1].map((side) => {
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(width, 0.18, 0.1), glossy(0x5a4ab8));
+    lip.position.set(0, 0.09, side * 0.3);
+    return lip;
+  });
+  group.add(rail, ...lips);
+  group.traverse((o) => { o.receiveShadow = true; });
+  return group;
+}
+
+/** Half-sunk spinning blade: purple disc with orange teeth. Spin `blade.rotation.z`. */
+export function createSaw(radius) {
+  const group = new THREE.Group();
+  const blade = new THREE.Group();
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.82, radius * 0.82, 0.16, 32).rotateX(Math.PI / 2), glossy(PALETTE.saw, { metalness: 0.2 }));
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.22, radius * 0.22, 0.24, 16).rotateX(Math.PI / 2), glossy(0xdedcf0, { metalness: 0.6 }));
+  blade.add(disc, hub);
+  const toothMaterial = glossy(PALETTE.sawTeeth, { roughness: 0.25 });
+  const teeth = 16;
+  for (let i = 0; i < teeth; i++) {
+    const a = (i / teeth) * Math.PI * 2;
+    const tooth = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.16, radius * 0.34, 4), toothMaterial);
+    tooth.position.set(Math.cos(a) * radius * 0.88, Math.sin(a) * radius * 0.88, 0);
+    tooth.rotation.z = a - Math.PI / 2 - 0.35; // raked like a real blade
+    tooth.scale.z = 0.4;
+    blade.add(tooth);
+  }
+  blade.traverse((o) => { o.castShadow = true; });
+  blade.position.y = radius * 0.35; // mostly above the rail, the rest sunk in the slot
+  group.add(blade);
+  return { group, blade };
+}
+
+/** Round black bomb with a lit fuse, sitting on a purple pad. Pulse `spark` to make it fizz. */
+export function createBomb(radius) {
+  const group = new THREE.Group();
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.6, radius * 1.8, 0.16, 8), glossy(PALETTE.bombPad));
+  pad.position.y = 0.08;
+  pad.receiveShadow = true;
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(radius * 1.45, 0.07, 8, 32).rotateX(Math.PI / 2),
+    glossy(0xff8a3a, { emissive: 0xff6a1a, emissiveIntensity: 0.8 }),
+  );
+  ring.position.y = 0.17;
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 18), glossy(PALETTE.bomb, { roughness: 0.2, metalness: 0.3 }));
+  shell.position.y = radius + 0.12;
+  shell.castShadow = true;
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.28, radius * 0.32, radius * 0.3, 12), glossy(0x5c5670));
+  neck.position.y = radius * 2 + 0.12;
+  const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, radius * 0.5, 6), glossy(0xd8c8a0));
+  fuse.position.set(0.06, radius * 2.35 + 0.12, 0);
+  fuse.rotation.z = -0.4;
+  const spark = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 10, 8),
+    new THREE.MeshBasicMaterial({ color: PALETTE.fuse, toneMapped: false }),
+  );
+  spark.position.set(0.16, radius * 2.55 + 0.12, 0);
+  group.add(pad, ring, shell, neck, fuse, spark);
+  return { group, spark, ring };
+}

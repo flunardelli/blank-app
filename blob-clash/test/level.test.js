@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateLevel } from '../src/level.js';
+import { generateLevel, hazardWeights } from '../src/level.js';
 import { CONFIG } from '../src/config.js';
 import { isGoodGate, requiredTapRate } from '../src/rules.js';
 
@@ -29,7 +29,63 @@ test('level data is well formed', () => {
       assert.ok(trap.button.d < trap.d - trap.halfDepth && Math.abs(trap.button.x) < half, `level ${n}: unreachable trap button`);
     }
     assert.ok(level.key.d > 0 && level.key.d < level.finishD && Math.abs(level.key.x) < half);
+    for (const w of level.walkers) {
+      assert.ok(w.range + w.radius < half && w.d > 0 && w.d < level.finishD, `level ${n}: walker off the track`);
+    }
   }
+});
+
+test('a gate pair never offers the same operation twice (no "×2 | ×2")', () => {
+  for (let n = 1; n <= 60; n++) {
+    for (const { left, right } of generateLevel(n).gates) {
+      assert.notEqual(left.op, right.op, `level ${n}: ${left.op}${left.value} | ${right.op}${right.value}`);
+    }
+  }
+});
+
+test('every jump ramp is followed by saws the jump clears', () => {
+  const { airborneHeight, jumpHeight } = CONFIG.obstacle;
+  for (let n = 1; n <= 30; n++) {
+    const { obstacles } = generateLevel(n);
+    for (const ramp of obstacles.filter((o) => o.kind === 'ramp')) {
+      const saws = obstacles.filter((o) => o.kind === 'saw' && o.d > ramp.d && o.d < ramp.d + ramp.length);
+      assert.equal(saws.length, 2);
+      for (const saw of saws) {
+        const lift = Math.sin(((saw.d - ramp.d) / ramp.length) * Math.PI) * jumpHeight;
+        assert.ok(lift > airborneHeight, `level ${n}: blobs would land on the saw`);
+      }
+      assert.ok(Math.abs(ramp.x) + ramp.halfWidth <= CONFIG.track.width / 2 + 1e-9);
+    }
+  }
+});
+
+test('bomb rows alternate sides and leave room for the biggest crowd', () => {
+  const { unitRadius, maxRadius } = CONFIG.crowd;
+  const maxX = CONFIG.track.width / 2 - maxRadius; // how far the biggest crowd can move sideways
+  for (let n = 1; n <= 30; n++) {
+    const bombs = generateLevel(n).obstacles.filter((o) => o.kind === 'bomb');
+    const rows = Object.values(Object.groupBy(bombs, (b) => b.d));
+    const side = (row) => Math.sign(row[0].x);
+    rows.forEach((row) => {
+      assert.ok(row.every((b) => Math.sign(b.x) === side(row)), `level ${n}: bombs on both sides`);
+      // Crowd hugging the free side: its nearest body must not touch any bomb.
+      const nearestBody = -side(row) * maxX + side(row) * (maxRadius - unitRadius);
+      row.forEach((b) => assert.ok(Math.abs(b.x - nearestBody) > b.radius + unitRadius, `level ${n}: no way past`));
+    });
+    for (let i = 1; i < rows.length; i += 2) assert.notEqual(side(rows[i - 1]), side(rows[i]));
+  }
+});
+
+test('phases unlock new hazards and each one features a different kind', () => {
+  assert.deepEqual(Object.keys(hazardWeights(1)).sort(), ['slider', 'spikes', 'trap']);
+  assert.ok('saw' in hazardWeights(2) && !('bombs' in hazardWeights(2)));
+  assert.ok('bombs' in hazardWeights(3));
+  const featured = (level) => Object.entries(hazardWeights(level)).sort((a, b) => b[1] - a[1])[0][0];
+  for (let n = 1; n < 12; n++) assert.notEqual(featured(n), featured(n + 1));
+  assert.equal(featured(2), 'saw', 'a newly unlocked hazard is the star of its phase');
+  assert.equal(generateLevel(1).walkers.length, 0, 'phase 1 has no walkers yet');
+  assert.ok(generateLevel(2).walkers.length > 0);
+  assert.ok([4, 5, 6, 7, 8].some((n) => generateLevel(n).walkers.some((w) => w.strength > 1)), 'brutes show up later');
 });
 
 test('with the best crowd the boss needs a humane tapping speed, and gets harder', () => {
