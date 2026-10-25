@@ -2,8 +2,9 @@
 import * as THREE from 'three';
 import { CONFIG, PALETTE } from './config.js';
 import {
-  createBoss, createCoin, createFinishLine, createGate, createLadder, createMelon, createRing,
-  createSpikePad, createTrack, gummyMaterial, humanoidGeometry,
+  createBoss, createButton, createChampion, createCoin, createFinishLine, createGate, createKey, createLadder,
+  createMelon, createPillar, createRing, createSpikeField, createSpikePad, createSpringGlove, createTrack,
+  gummyMaterial, humanoidGeometry,
 } from './art/models.js';
 import { Crowd } from './crowd.js';
 
@@ -21,6 +22,22 @@ export function createPlayerCrowd(scene) {
   return new Crowd(scene, shared.playerGeometry, shared.playerMaterial, {
     maxVisible: CONFIG.crowd.maxVisible, facing: Math.PI,
   });
+}
+
+export function createPlayerChampion() {
+  return createChampion(shared.playerGeometry, shared.playerMaterial);
+}
+
+function buildSlider(obstacle) {
+  if (obstacle.skin === 'melon') return { object: createMelon(obstacle.radius) };
+  const side = Math.sign(obstacle.edgeX);
+  const holder = new THREE.Group();
+  const pillar = createPillar();
+  pillar.position.x = side * 0.8; // just outside the rail
+  const springGlove = createSpringGlove(obstacle.radius * 0.45, side);
+  springGlove.spring.rotation.y = side > 0 ? Math.PI : 0; // spring grows from the pillar inwards
+  holder.add(pillar, springGlove.group);
+  return { object: holder, springGlove };
 }
 
 export function buildLevelView(scene, level) {
@@ -44,8 +61,17 @@ export function buildLevelView(scene, level) {
   });
 
   const obstacles = level.obstacles.map((obstacle) => {
-    if (obstacle.kind === 'melon') {
-      return { obstacle, object: place(createMelon(obstacle.radius), obstacle.d) };
+    if (obstacle.kind === 'slider') {
+      const view = buildSlider(obstacle);
+      place(view.object, obstacle.d, obstacle.skin === 'glove' ? obstacle.edgeX : 0);
+      return { obstacle, ...view };
+    }
+    if (obstacle.kind === 'trap') {
+      const field = createSpikeField(obstacle.halfDepth);
+      const button = createButton(obstacle.button.radius);
+      place(field.group, obstacle.d);
+      place(button.group, obstacle.button.d, obstacle.button.x);
+      return { obstacle, object: field.group, field, button, armed: true };
     }
     const group = new THREE.Group();
     obstacle.pads.forEach((pad) => {
@@ -72,9 +98,12 @@ export function buildLevelView(scene, level) {
     return { enemy, crowd };
   });
 
+  const key = place(createKey(), level.key.d, level.key.x);
+  key.position.y = 1.2;
+
   place(createFinishLine(), level.finishD);
   place(createRing(CONFIG.boss.ringDepth), level.finishD + 0.6);
-  const boss = createBoss();
+  const boss = createBoss(PALETTE.bosses[(level.level - 1) % PALETTE.bosses.length]);
   place(boss.root, level.boss.d);
   boss.root.position.y = 0.25;
   place(ladder.group, level.ladderStart);
@@ -85,6 +114,7 @@ export function buildLevelView(scene, level) {
     obstacles,
     coins,
     enemies,
+    key,
     boss,
     ladder,
     dispose() {

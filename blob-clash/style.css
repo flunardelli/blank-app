@@ -22,8 +22,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #62c6ff; fon
 
 /* ---- Top bar ---- */
 #topbar { position: fixed; inset: 0 0 auto 0; padding: max(14px, env(safe-area-inset-top)) 16px 0; pointer-events: none; z-index: 5; }
+#keys { position: absolute; left: 14px; top: max(14px, env(safe-area-inset-top)); display: flex; gap: 2px; }
+.key-slot { width: 34px; height: 34px; font-style: normal; display: grid; place-items: center; font-size: 28px; }
+.key-slot::after { content: "🔑"; filter: grayscale(1) brightness(0.35); }
+.key-slot.filled::after { filter: drop-shadow(0 0 4px #ffd54a); }
+#topbar.fighting #keys, #topbar.fighting #coins, #topbar.fighting #progress-wrap { visibility: hidden; }
+#level-badge { width: 46px; height: 46px; flex: none; display: grid; place-items: center; border-radius: 50%;
+  background: #2d2f8f; border: 4px solid var(--ink); font-size: 22px; -webkit-text-stroke: 0.1em var(--ink); }
 #coins { position: absolute; right: 14px; top: max(14px, env(safe-area-inset-top)); display: flex; align-items: center; gap: 6px; font-size: 30px; }
-#progress-wrap { display: flex; align-items: center; gap: 8px; width: min(320px, 62vw); margin: 58px auto 0; }
+#progress-wrap { display: flex; align-items: center; gap: 8px; width: min(360px, 78vw); margin: 58px auto 0; }
 #topbar.hidden-progress #progress-wrap { visibility: hidden; }
 #progress { flex: 1; height: 26px; border: 4px solid var(--ink); border-radius: 12px; background: #36377a; overflow: hidden; }
 #progress-fill { height: 100%; width: 0; background: linear-gradient(#7dff4a, #2fd417); border-radius: 6px; box-shadow: inset 0 3px 0 #b8ff9a; }
@@ -35,6 +42,27 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #62c6ff; fon
 .coin-icon::after { content: "★"; color: #ffe066; font-size: 0.6em; line-height: 1; }
 .coin-icon.big { font-size: 34px; }
 .coin-icon.huge { font-size: 64px; }
+
+/* ---- Boxing fight ---- */
+#fight { position: fixed; inset: 0; z-index: 3; pointer-events: none; display: flex; flex-direction: column;
+  justify-content: space-between; padding: max(16px, env(safe-area-inset-top)) 10px max(40px, env(safe-area-inset-bottom)); }
+.fight-bars { display: flex; justify-content: space-between; gap: 12px; }
+.fighter { display: flex; align-items: center; flex: 1; max-width: 46%; }
+.hp { flex: 1; height: 26px; margin: 0 -6px; border: 4px solid var(--ink); border-radius: 10px; background: #4b1e6e; overflow: hidden; }
+.hp > div { height: 100%; width: 100%; background: linear-gradient(#7dff4a, #2fd417); box-shadow: inset 0 3px 0 #b8ff9a; transition: width 0.12s; }
+.fighter.boss .hp { transform: scaleX(-1); }
+.blob-icon { position: relative; z-index: 1; width: 44px; height: 50px; flex: none;
+  border-radius: 50% 50% 40% 40%; border: 4px solid var(--ink); }
+.blob-icon.player { background: #ff7a1a; }
+.blob-icon.boss { background: var(--boss-color, #6fe04a); }
+.tap-hint { text-align: center; }
+.tap-hand { position: relative; display: inline-block; font-size: 84px; animation: tap 0.45s ease-in-out infinite alternate; }
+.ripple { position: absolute; left: 50%; top: 2px; width: 46px; height: 46px; margin-left: -30px; border-radius: 50%;
+  border: 3px solid #fff; animation: ripple 0.9s ease-out infinite; }
+@keyframes tap { from { transform: translateY(0); } to { transform: translateY(10px) scale(0.94); } }
+@keyframes ripple { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+.outline { margin: 6px 0 0; font-size: clamp(36px, 11vw, 60px); color: #fff; -webkit-text-stroke: 0.08em var(--ink); paint-order: stroke fill; }
+.chest { font-size: clamp(28px, 8vw, 40px); }
 
 /* ---- Count bubbles ---- */
 #bubbles { position: fixed; inset: 0; pointer-events: none; z-index: 2; }

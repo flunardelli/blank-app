@@ -1,12 +1,12 @@
-// Game state machine: menu -> running <-> skirmish -> boss -> bonus -> complete | lost.
+// Game state machine: menu -> running <-> skirmish -> merge -> boxing -> bonus -> complete | lost.
 import * as THREE from 'three';
 import { CONFIG, PALETTE } from './config.js';
 import { Effects } from './effects.js';
 import { generateLevel } from './level.js';
-import { buildLevelView, createPlayerCrowd, toZ } from './levelView.js';
+import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './levelView.js';
 import {
-  applyGate, bonusMultiplier, bossFightResult, bossFightStep, bossLaunchRate, chooseGate, clashRate,
-  clashStep, crossesObstacle, damageFor, melonX, rewardCoins, startBlobsFor, upgradeCost,
+  applyGate, bonusMultiplier, bossPunchDamage, championStats, chestReward, chooseGate, clashRate, clashStep,
+  crossesObstacle, pressesButton, rewardCoins, sliderX, startBlobsFor, upgradeCost,
 } from './rules.js';
 import { loadSave, writeSave } from './save.js';
 
@@ -19,7 +19,6 @@ const cameraGoal = new THREE.Vector3();
 const lookGoal = new THREE.Vector3();
 const lookCurrent = new THREE.Vector3();
 const bubbleAnchor = new THREE.Vector3();
-const bossChest = new THREE.Vector3();
 
 export class Game {
   constructor({ world, hud, input }) {
@@ -29,10 +28,13 @@ export class Game {
     this.save = loadSave();
     this.effects = new Effects(world.scene);
     this.player = createPlayerCrowd(world.scene);
+    this.champion = createPlayerChampion();
+    world.scene.add(this.champion.root);
     this.time = 0;
     this.view = null;
     input.onPress(() => {
       if (this.state === 'menu') this.start();
+      else if (this.state === 'boxing') this.championPunch();
     });
     this.loadLevel(this.save.level);
   }
@@ -42,6 +44,7 @@ export class Game {
     this.view?.dispose();
     this.effects.clear();
     this.hud.clearBubbles();
+    this.hud.showFight(false);
     this.level = generateLevel(levelNumber);
     this.view = buildLevelView(this.world.scene, this.level);
 
@@ -50,14 +53,14 @@ export class Game {
     this.nextEnemy = 0;
     this.remainingCoins = [...this.level.coins];
     this.runCoins = 0;
-    this.bossHpShown = this.level.boss.hp;
-    this.bossPunch = [0, 0];
+    this.keyTaken = false;
     this.fight = null;
 
     this.player.center = { x: 0, d: 0 };
     this.player.units = [];
     this.player.setCount(startBlobsFor(this.save.upgrades.blobs));
     this.player.mood = 'idle';
+    this.champion.root.visible = false;
 
     this.playerBubble = this.hud.createBubble('player');
     this.bossBubble = this.hud.createBubble('boss');
@@ -65,6 +68,8 @@ export class Game {
 
     this.snapCamera = true;
     this.hud.setCoins(this.save.coins);
+    this.hud.setLevel(levelNumber);
+    this.hud.setKeys(this.save.keys);
     this.showMenu();
   }
 
@@ -101,7 +106,7 @@ export class Game {
     this.time += dt;
     if (this.state === 'running') this.updateRunning(dt);
     else if (this.state === 'skirmish') this.updateSkirmish(dt);
-    else if (this.state === 'boss') this.updateBoss(dt);
+    else if (this.state === 'boxing') this.updateBoxing(dt);
 
     this.animateScene(dt);
     this.player.update(dt, this.time);
@@ -113,18 +118,18 @@ export class Game {
 
   updateRunning(dt) {
     const { player } = this;
-    const { forwardSpeed } = CONFIG.crowd;
     const maxX = Math.max(0, CONFIG.track.width / 2 - player.radius);
-    player.center.d += forwardSpeed * dt;
+    player.center.d += CONFIG.crowd.forwardSpeed * dt;
     player.center.x = THREE.MathUtils.clamp(player.center.x + this.input.consumeLateral(dt, CONFIG.crowd), -maxX, maxX);
 
     this.checkGates();
-    this.checkCoins();
+    this.checkPickups();
+    this.checkButtons();
     this.checkObstacles();
     this.checkEnemies();
 
     if (player.count <= 0) this.lose();
-    else if (player.center.d >= this.level.finishD - 1) this.startBoss();
+    else if (player.center.d >= this.level.finishD - 1) this.startMerge();
   }
 
   checkGates() {
@@ -141,26 +146,58 @@ export class Game {
     }, () => { panel.glass.visible = panel.label.visible = false; });
   }
 
-  checkCoins() {
+  // Coins and the key are collected by any part of the crowd's footprint.
+  inReach(x, d, margin = 0.6) {
     const { center } = this.player;
-    const reach = this.player.radius + 0.6;
+    const reach = this.player.radius + margin;
+    return Math.abs(d - center.d) <= reach && Math.abs(x - center.x) <= reach;
+  }
+
+  collectAnimation(mesh) {
+    const startY = mesh.position.y;
+    this.effects.tween(0.3, (k) => {
+      mesh.position.y = startY + k * 2.5;
+      mesh.scale.setScalar(1 - k);
+    }, () => { mesh.visible = false; });
+  }
+
+  checkPickups() {
     this.remainingCoins = this.remainingCoins.filter((coin) => {
-      if (Math.abs(coin.d - center.d) > reach || Math.abs(coin.x - center.x) > reach) return true;
+      if (!this.inReach(coin.x, coin.d)) return true;
       this.runCoins += CONFIG.coins.value;
       this.hud.setCoins(this.save.coins + this.runCoins);
-      const mesh = this.view.coins.get(coin.id);
-      const startY = mesh.position.y;
-      this.effects.tween(0.3, (k) => {
-        mesh.position.y = startY + k * 2.5;
-        mesh.scale.setScalar(1 - k);
-      }, () => { mesh.visible = false; });
+      this.collectAnimation(this.view.coins.get(coin.id));
       return false;
     });
+    const { key } = this.level;
+    if (!this.keyTaken && this.inReach(key.x, key.d)) {
+      this.keyTaken = true;
+      this.collectAnimation(this.view.key);
+      this.hud.setKeys(Math.min(CONFIG.keys.perChest, this.save.keys + 1));
+    }
+  }
+
+  // Any blob touching a trap's button retracts that trap's spikes.
+  checkButtons() {
+    const { unitRadius } = CONFIG.crowd;
+    for (const trap of this.view.obstacles) {
+      if (!trap.armed) continue;
+      const { button } = trap.obstacle;
+      if (Math.abs(button.d - this.player.center.d) > this.player.radius + 2) continue;
+      if (!this.player.units.some((u) => pressesButton(button, u.x, u.d, unitRadius))) continue;
+      trap.armed = false;
+      trap.button.cap.position.y = 0.12;
+      trap.button.cap.material = trap.button.cap.material.clone();
+      trap.button.cap.material.color.set(0x8a8a9a);
+      trap.button.cap.material.emissiveIntensity = 0;
+      this.effects.tween(0.4, (k) => { trap.field.spikes.position.y = -1.1 * k; });
+    }
   }
 
   checkObstacles() {
     const { player } = this;
-    const near = this.view.obstacles.filter(({ obstacle }) => Math.abs(obstacle.d - player.center.d) < player.radius + 3);
+    const near = this.view.obstacles.filter(({ obstacle, armed }) =>
+      armed !== false && Math.abs(obstacle.d - player.center.d) < player.radius + 3);
     if (!near.length) return;
     const { unitRadius } = CONFIG.crowd;
     // Each body is tested once, when it crosses the obstacle line. Testing overlap every frame
@@ -170,7 +207,11 @@ export class Game {
       if (near.some(({ obstacle }) => crossesObstacle(obstacle, this.time, u.x, u.prevD, u.d, unitRadius))) hits.push(i);
     });
     if (!hits.length) return;
+    // Bodies we don't draw (count > maxVisible) die with the same share as the visible ones.
+    const hidden = player.count - player.units.length;
+    const hiddenLosses = Math.round(hidden * (hits.length / player.units.length));
     player.kill(hits).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    player.setCount(player.count - hiddenLosses);
     this.effects.shake = Math.max(this.effects.shake, 0.4);
   }
 
@@ -204,70 +245,113 @@ export class Game {
     }
   }
 
-  // ---- Boss ---------------------------------------------------------------------
-  startBoss() {
-    const { player } = this;
-    this.state = 'boss';
-    player.center.d = this.level.finishD - 1;
-    player.mood = 'fight';
+  // ---- Boss: the crowd merges into one champion, then it's a tapping boxing match ----
+  championSpot() {
+    return new THREE.Vector3(0, 0.25, toZ(this.level.boss.d - 4.2));
+  }
+
+  startMerge() {
+    const { player, champion } = this;
+    this.state = 'merge';
+    const stats = championStats(player.count, this.save.upgrades.damage);
     this.fight = {
-      count: player.count, hp: this.level.boss.hp, carry: 0,
-      damage: damageFor(this.save.upgrades.damage), result: null,
+      ...stats, maxHp: stats.hp, bossHp: this.level.boss.hp, bossMaxHp: this.level.boss.hp,
+      bossTimer: CONFIG.boxing.bossPunchInterval, windup: 0, lastTap: -1, flinch: 0, bossFlinch: 0, nextGlove: 0,
     };
-    this.launchRate = bossLaunchRate(player.count);
+    const spot = this.championSpot();
+    const scale = 1.2 + Math.min(1.6, Math.cbrt(player.count) * 0.3);
+    champion.root.position.copy(spot);
+    champion.root.rotation.y = Math.PI;
+    champion.root.scale.setScalar(0.01);
+    champion.root.visible = true;
+
+    const bodies = player.take(player.units.length);
+    player.setCount(0);
+    bodies.forEach((body, i) => this.flyInto(body, spot, i * 0.012));
+    this.effects.tween(0.9, (k) => champion.root.scale.setScalar(Math.max(0.01, scale * k)), () => {
+      this.state = 'boxing';
+      this.hud.showFight(true, this.bossColors().top);
+    });
   }
 
-  updateBoss(dt) {
-    const { fight, player } = this;
-    if (fight.result) return;
-    Object.assign(fight, bossFightStep(fight, this.launchRate, dt));
-    if (fight.launched) {
-      const bodies = player.take(fight.launched);
-      player.setCount(fight.count);
-      bodies.forEach((body, i) => this.launchAtBoss(body, i * 0.04));
-    }
-    fight.result = bossFightResult(fight);
-    if (fight.result) {
-      this.effects.tween(0.7, () => {}, () => (fight.result === 'won' ? this.startBonus() : this.lose()));
-    }
-  }
-
-  launchAtBoss(body, delay) {
+  flyInto(body, target, delay) {
     const mesh = new THREE.Mesh(this.player.mesh.geometry, this.player.mesh.material);
     mesh.scale.setScalar(0.9);
     mesh.rotation.y = Math.PI;
     const from = new THREE.Vector3(body.x, 0, toZ(body.d));
-    bossChest.set((Math.random() - 0.5) * 1.6, 3.2 + Math.random(), toZ(this.level.boss.d) + 1.2);
-    const to = bossChest.clone();
+    const to = target.clone().setY(1.2);
+    const flight = 0.4;
     this.effects.root.add(mesh);
-    this.effects.tween(0.32 + delay, (k) => {
-      const t = Math.max(0, (k * (0.32 + delay) - delay) / 0.32);
+    this.effects.tween(flight + delay, (k) => {
+      const t = Math.max(0, (k * (flight + delay) - delay) / flight);
       mesh.position.lerpVectors(from, to, t);
-      mesh.position.y += Math.sin(t * Math.PI) * 2.2;
-      mesh.rotation.x = -t * 1.5;
-    }, () => {
-      this.effects.root.remove(mesh);
-      this.effects.burst(to, PALETTE.player.splat, { count: 8, speed: 7, size: 0.2 });
-      this.effects.splat(to.x + (Math.random() - 0.5) * 3, to.z + 1 + Math.random() * 2, PALETTE.player.splat, 1.6, 0.3);
-      this.bossHpShown = Math.max(this.fight.hp, this.bossHpShown - this.fight.damage);
-      const arm = Math.random() < 0.5 ? 0 : 1;
-      this.bossPunch[arm] = 1;
-      this.effects.shake = Math.max(this.effects.shake, 0.3);
-    });
+      mesh.position.y += Math.sin(t * Math.PI) * 2;
+      mesh.scale.setScalar(0.9 * (1 - t * 0.6));
+    }, () => this.effects.root.remove(mesh));
   }
 
-  startBonus() {
+  championPunch() {
+    const f = this.fight;
+    if (this.time - f.lastTap < CONFIG.boxing.tapCooldown) return;
+    f.lastTap = this.time;
+    f.bossHp = Math.max(0, f.bossHp - f.punch);
+    f.bossFlinch = 1;
+    const glove = this.champion.gloves[f.nextGlove];
+    f.nextGlove = 1 - f.nextGlove;
+    glove.userData.punch = 1;
+    const hitPoint = new THREE.Vector3((Math.random() - 0.5) * 1.5, 3 + Math.random(), toZ(this.level.boss.d) + 1);
+    this.effects.burst(hitPoint, this.bossColors().top, { count: 5, speed: 6, size: 0.18 });
+    this.effects.shake = Math.max(this.effects.shake, 0.15);
+    if (f.bossHp <= 0) this.knockOut();
+  }
+
+  bossColors() {
+    return PALETTE.bosses[(this.level.level - 1) % PALETTE.bosses.length];
+  }
+
+  updateBoxing(dt) {
+    const f = this.fight;
+    f.bossTimer -= dt;
+    // Wind-up for the last 0.35 s gives the player a visual cue before each boss punch.
+    f.windup = THREE.MathUtils.clamp(1 - f.bossTimer / 0.35, 0, 1);
+    if (f.bossTimer > 0) return;
+    f.bossTimer = CONFIG.boxing.bossPunchInterval;
+    f.hp = Math.max(0, f.hp - bossPunchDamage(f.maxHp));
+    f.flinch = 1;
+    this.view.boss.arms[Math.random() < 0.5 ? 0 : 1].userData.strike = 1;
+    const at = this.champion.root.position.clone().setY(2);
+    this.effects.burst(at, PALETTE.player.splat, { count: 10, speed: 7, size: 0.2 });
+    this.effects.splat(at.x + (Math.random() - 0.5) * 2, at.z + (Math.random() - 0.5) * 2, PALETTE.player.splat, 1.4, 0.3);
+    this.effects.shake = 0.6;
+    if (f.hp <= 0) this.championDown();
+  }
+
+  knockOut() {
+    this.hud.showFight(false);
+    this.startBonus(this.fight.hp / this.fight.maxHp);
+  }
+
+  championDown() {
+    this.hud.showFight(false);
+    const { position } = this.champion.root;
+    this.champion.root.visible = false;
+    this.effects.burst(position.clone().setY(1.5), PALETTE.player.splat, { count: 40, speed: 10, size: 0.3 });
+    this.effects.splat(position.x, position.z, PALETTE.player.splat, 5, 0.3);
+    this.lose();
+  }
+
+  startBonus(healthFraction) {
     this.state = 'bonus';
-    this.bossHpShown = 0;
-    this.player.mood = 'cheer';
-    this.multiplier = bonusMultiplier(this.fight.count, this.level.boss.hp);
+    this.multiplier = bonusMultiplier(healthFraction);
     const { tiles } = this.view.ladder;
     const tile = tiles.find((t) => t.multiplier === this.multiplier) ?? tiles[tiles.length - 1];
     const boss = this.view.boss.root;
     const from = boss.position.clone();
     const to = new THREE.Vector3(0, 0.25, toZ(this.level.ladderStart + tile.d));
     const height = 3 + (from.z - to.z) * 0.06;
-    this.effects.burst(new THREE.Vector3(0, 4, from.z), PALETTE.boss.top, { count: 30, speed: 10, size: 0.3 });
+    this.champion.gloves[0].userData.punch = this.champion.gloves[1].userData.punch = 1;
+    this.effects.burst(new THREE.Vector3(0, 4, from.z), this.bossColors().top, { count: 30, speed: 10, size: 0.3 });
+    this.effects.shake = 1;
     this.effects.tween(1.4 + (from.z - to.z) * 0.012, (k) => {
       boss.position.lerpVectors(from, to, k);
       boss.position.y += Math.sin(k * Math.PI) * height;
@@ -276,8 +360,8 @@ export class Game {
       boss.rotation.x = -Math.PI / 2; // KO: flat on its back
       boss.position.y = 0.6;
       tile.tile.material.color.set(0x7cf05a);
-      this.effects.splat(to.x, to.z, PALETTE.boss.top, 7, 0.08);
-      this.effects.burst(new THREE.Vector3(to.x, 1, to.z), PALETTE.boss.top, { count: 30, speed: 9, size: 0.3 });
+      this.effects.splat(to.x, to.z, this.bossColors().top, 7, 0.08);
+      this.effects.burst(new THREE.Vector3(to.x, 1, to.z), this.bossColors().top, { count: 30, speed: 9, size: 0.3 });
       this.effects.shake = 1;
       this.effects.tween(0.9, () => {}, () => this.complete());
     });
@@ -286,12 +370,19 @@ export class Game {
   complete() {
     this.state = 'complete';
     const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
-    this.save.coins += reward;
+    let chest = 0;
+    if (this.keyTaken) this.save.keys += 1;
+    if (this.save.keys >= CONFIG.keys.perChest) {
+      chest = chestReward(this.level.level);
+      this.save.keys = 0;
+    }
+    this.save.coins += reward + chest;
     this.save.level = this.level.level + 1;
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
+    this.hud.setKeys(this.save.keys);
     this.hud.showComplete({
-      level: this.level.level, coins: reward, multiplier: this.multiplier,
+      level: this.level.level, coins: reward, multiplier: this.multiplier, chest,
       onNext: () => this.loadLevel(this.save.level),
     });
   }
@@ -299,9 +390,10 @@ export class Game {
   lose() {
     this.state = 'lost';
     this.player.setCount(0).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
-    this.save.coins += this.runCoins;
+    this.save.coins += this.runCoins; // keys only count on a win
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
+    this.hud.setKeys(this.save.keys);
     this.effects.tween(0.8, () => {}, () => this.hud.showLose({
       coins: this.runCoins, onContinue: () => this.loadLevel(this.level.level),
     }));
@@ -309,21 +401,53 @@ export class Game {
 
   // ---- Presentation -------------------------------------------------------------
   animateScene(dt) {
-    for (const { obstacle, object } of this.view.obstacles) {
-      if (obstacle.kind !== 'melon') continue;
-      object.position.x = melonX(obstacle, this.time);
-      object.rotation.z = Math.sign(obstacle.edgeX) * (0.5 + 0.5 * Math.cos(obstacle.speed * this.time + obstacle.phase)) * 0.6;
+    for (const { obstacle, object, springGlove } of this.view.obstacles) {
+      if (obstacle.kind !== 'slider') continue;
+      const x = sliderX(obstacle, this.time);
+      const inset = Math.abs(x - obstacle.edgeX);
+      if (springGlove) {
+        springGlove.fist.position.x = x - obstacle.edgeX;
+        springGlove.spring.scale.x = Math.max(0.05, inset - 0.3);
+      } else {
+        object.position.x = x;
+        object.rotation.z = Math.sign(obstacle.edgeX) * (inset / obstacle.reach) * 0.6;
+      }
     }
     for (const mesh of this.view.coins.values()) mesh.rotation.y += dt * 3;
+    this.view.key.rotation.y += dt * 2;
+    this.animateBoxers(dt);
+  }
 
-    if (this.state === 'bonus' || this.state === 'complete') return;
+  animateBoxers(dt) {
+    if (this.state === 'bonus' || this.state === 'complete') {
+      this.animateGloves(dt);
+      return;
+    }
     const { body, arms } = this.view.boss;
-    const fighting = this.state === 'boss';
-    body.scale.y = 1 + Math.sin(this.time * (fighting ? 8 : 3)) * 0.03;
+    const f = this.fight;
+    const boxing = this.state === 'boxing';
+    body.scale.y = 1 + Math.sin(this.time * (boxing ? 8 : 3)) * 0.03;
+    if (f) f.bossFlinch = Math.max(0, f.bossFlinch - dt * 6);
+    body.rotation.x = f ? -f.bossFlinch * 0.15 : 0;
     arms.forEach((arm, i) => {
-      this.bossPunch[i] = Math.max(0, this.bossPunch[i] - dt * 4);
-      const guard = fighting ? 0.6 + Math.sin(this.time * 6 + i * Math.PI) * 0.15 : 0.25;
-      arm.rotation.x = -(guard + this.bossPunch[i] * 1.3);
+      arm.userData.strike = Math.max(0, (arm.userData.strike ?? 0) - dt * 4);
+      const guard = boxing ? 0.7 + Math.sin(this.time * 6 + i * Math.PI) * 0.12 : 0.25;
+      const windup = boxing ? f.windup * 0.6 : 0;
+      arm.rotation.x = -(guard - windup + arm.userData.strike * 1.6);
+    });
+    this.animateGloves(dt);
+  }
+
+  animateGloves(dt) {
+    const f = this.fight;
+    if (!this.champion.root.visible || !f) return;
+    f.flinch = Math.max(0, f.flinch - dt * 4);
+    this.champion.body.rotation.x = f.flinch * 0.3;
+    this.champion.gloves.forEach((glove, i) => {
+      glove.userData.punch = Math.max(0, (glove.userData.punch ?? 0) - dt * 7);
+      glove.position.copy(glove.userData.rest);
+      glove.position.z += glove.userData.punch * 0.9;
+      glove.position.y += Math.sin(this.time * 7 + i * Math.PI) * 0.05;
     });
   }
 
@@ -331,24 +455,31 @@ export class Game {
     const { center } = this.player;
     const r = this.player.radius;
     switch (this.state) {
-      case 'boss':
-        return { pos: [0, 9, toZ(this.level.finishD) + 9], look: [0, 2.5, toZ(this.level.boss.d)] };
+      case 'merge':
+      case 'boxing':
+      case 'lost': {
+        if (!this.fight) break;
+        // Side-on ring view like the reference: champion left, boss right.
+        const mid = toZ(this.level.boss.d - 2.1);
+        return { pos: [12, 6.5, mid + 5], look: [0, 2.8, mid - 0.5] };
+      }
       case 'bonus':
       case 'complete': {
         const { position } = this.view.boss.root;
         return { pos: [position.x, 17, position.z + 11], look: [position.x, 0, position.z - 4] };
       }
       default:
-        return {
-          pos: [center.x * 0.5, 7.5 + r * 0.9, toZ(center.d) + 8.5 + r * 0.8],
-          look: [center.x * 0.35, 0.6, toZ(center.d) - 7],
-        };
+        break;
     }
+    return {
+      pos: [center.x * 0.5, 7.5 + r * 0.9, toZ(center.d) + 8.5 + r * 0.8],
+      look: [center.x * 0.35, 0.6, toZ(center.d) - 7],
+    };
   }
 
   updateCamera(dt) {
     const { camera } = this.world;
-    if (this.state !== 'lost') {
+    if (this.state !== 'lost' || this.fight) {
       const focus = this.cameraFocus();
       cameraGoal.fromArray(focus.pos);
       lookGoal.fromArray(focus.look);
@@ -366,11 +497,12 @@ export class Game {
 
   updateHud() {
     const { camera } = this.world;
-    const { player } = this;
+    const { player, fight } = this;
     this.hud.setProgress(player.center.d / this.level.finishD);
+    if (fight) this.hud.setFight(fight.hp / fight.maxHp, fight.bossHp / fight.bossMaxHp);
 
     bubbleAnchor.set(player.center.x, 2.3, toZ(player.center.d));
-    this.hud.placeBubble(this.playerBubble, bubbleAnchor, camera, player.count, player.count > 0 && this.state !== 'complete');
+    this.hud.placeBubble(this.playerBubble, bubbleAnchor, camera, player.count, player.count > 0);
 
     const inRange = (d) => d - player.center.d < CONFIG.hud.bubbleRange;
     for (const { crowd, bubble } of this.view.enemies) {
@@ -379,7 +511,7 @@ export class Game {
     }
 
     bubbleAnchor.set(0, 6.6, toZ(this.level.boss.d));
-    const bossAlive = this.state !== 'bonus' && this.state !== 'complete' && inRange(this.level.boss.d);
-    this.hud.placeBubble(this.bossBubble, bubbleAnchor, camera, Math.ceil(this.bossHpShown), bossAlive);
+    const showBossHp = this.state === 'running' || this.state === 'skirmish';
+    this.hud.placeBubble(this.bossBubble, bubbleAnchor, camera, this.level.boss.hp, showBossHp && inRange(this.level.boss.d));
   }
 }

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateLevel } from '../src/level.js';
 import { CONFIG } from '../src/config.js';
-import { isGoodGate } from '../src/rules.js';
+import { isGoodGate, requiredTapRate } from '../src/rules.js';
 
 test('levels are deterministic for the same number', () => {
   assert.deepEqual(generateLevel(3), generateLevel(3));
@@ -25,14 +25,20 @@ test('level data is well formed', () => {
       assert.ok(Math.max(...gaps) >= CONFIG.obstacle.minSpikeGap - 1e-9, `level ${n}: spike gap too small`);
     }
     assert.ok(level.boss.d > level.finishD && level.ladderStart > level.boss.d);
+    for (const trap of level.obstacles.filter((o) => o.kind === 'trap')) {
+      assert.ok(trap.button.d < trap.d - trap.halfDepth && Math.abs(trap.button.x) < half, `level ${n}: unreachable trap button`);
+    }
+    assert.ok(level.key.d > 0 && level.key.d < level.finishD && Math.abs(level.key.x) < half);
   }
 });
 
-test('the boss is beatable with perfect play, and gets relatively harder', () => {
-  const ratios = [1, 5, 10, 20].map((n) => {
+test('with the best crowd the boss needs a humane tapping speed, and gets harder', () => {
+  const rates = [1, 5, 10, 20].map((n) => {
     const { boss, bestCount } = generateLevel(n);
-    assert.ok(boss.hp < bestCount, `level ${n}: boss ${boss.hp} >= best ${bestCount}`);
-    return boss.hp / bestCount;
+    const rate = requiredTapRate(bestCount, boss.hp, 1);
+    assert.ok(rate <= 6, `level ${n}: needs ${rate.toFixed(1)} taps/s`);
+    return rate;
   });
-  assert.ok(ratios[0] < ratios[3]);
+  assert.ok(rates[0] < rates[3]);
+  assert.ok(rates[0] <= 3, 'level 1 is gentle');
 });
