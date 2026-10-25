@@ -2,7 +2,7 @@ name: Deploy Blob Clash to GitHub Pages
 
 on:
   push:
-    branches: [main, feat/blob-clash-3d]
+    branches: [main]
     paths: ['blob-clash/**', '.github/workflows/blob-clash-pages.yml']
   workflow_dispatch:
 
