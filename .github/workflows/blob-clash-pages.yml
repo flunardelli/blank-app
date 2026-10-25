@@ -30,7 +30,7 @@ jobs:
       - name: Publish static files to gh-pages
         run: |
           site=$(mktemp -d)
-          cp -r blob-clash/index.html blob-clash/style.css blob-clash/src "$site"/
+          cp -r blob-clash/index.html blob-clash/style.css blob-clash/src blob-clash/vendor "$site"/
           touch "$site/.nojekyll"
           cd "$site"
           git init -q -b gh-pages

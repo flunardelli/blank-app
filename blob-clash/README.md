@@ -2,6 +2,11 @@
 
 Jogo hyper-casual no estilo *Join Blob Clash 3D*, feito com three.js e JavaScript puro (ES modules, sem build).
 
+**Jogue:** https://flunardelli.github.io/blank-app/
+
+O three.js 0.169.0 está versionado em `vendor/three/` (licença MIT incluída), sem depender de CDN.
+Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`.github/workflows/blob-clash-pages.yml`).
+
 ## Como jogar
 - Seu blob corre sozinho pela pista; arraste (mouse/touch) ou use ← → / A D para desviar.
 - **Portões coloridos** definem sua cor (metade esquerda / direita).
