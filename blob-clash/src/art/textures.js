@@ -184,3 +184,47 @@ export const coinFaceTexture = () => cached('coin', () => {
   ctx.fill();
   return toTexture(canvas);
 });
+
+// Cartoon hit star (yellow with dark outline), used as a sprite on punches.
+export const starTexture = () => cached('star', () => {
+  const [canvas, ctx] = makeCanvas(128, 128);
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? 26 : 58;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    ctx.lineTo(64 + Math.cos(a) * r, 66 + Math.sin(a) * r);
+  }
+  ctx.closePath();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = '#b8860b';
+  ctx.stroke();
+  ctx.fillStyle = '#ffd92e';
+  ctx.fill();
+  return toTexture(canvas);
+});
+
+export const puffTexture = () => cached('puff', () => {
+  const [canvas, ctx] = makeCanvas(64, 64);
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.6, 'rgba(255,255,255,0.8)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  return toTexture(canvas);
+});
+
+// Emoji on a white speech blob, floating over the crowd when it grows.
+export const emojiTexture = (emoji) => cached(`emoji:${emoji}`, () => {
+  const [canvas, ctx] = makeCanvas(128, 128);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.beginPath();
+  ctx.arc(64, 64, 58, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.font = '76px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(emoji, 64, 70);
+  return toTexture(canvas);
+});

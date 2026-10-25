@@ -14,8 +14,20 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 - **Armadilha com botão:** espinhos na pista inteira. Pise no **botão verde** antes deles para recolhê-los, senão a multidão morre.
 - **Multidões vermelhas** bloqueiam a pista: os dois lados se anulam um a um.
 - **Moedas** na pista e **uma chave por fase**. Com 3 chaves, abre um **baú** de moedas.
-- **Boss:** a multidão se funde num campeão de luvas. **TAP TO FIGHT!** Cada toque é um soco, e o Boss revida em ritmo.
-  Multidão maior dá mais vida e soco mais forte; o Boss derruba qualquer campeão em ~10 s, então é preciso tocar rápido.
+- **Boss:** a multidão se funde num campeão de luvas, que abre a luta com um **soco voador**.
+  **TAP TO FIGHT!**: cada toque é um jab; o 5º toque seguido vira **JUMP PUNCH** (2,5× de dano).
+  Multidão maior dá mais vida e soco mais forte; todo chefe derruba qualquer campeão em ~10 s, então é preciso tocar rápido.
+- **Um chefe por fase** (`src/bosses.js`, em ciclo), cada um com visual e golpe próprios:
+
+  | Chefe | Visual | Golpe |
+  |---|---|---|
+  | ROOKIE | capacete de futebol americano | jab simples |
+  | SPARTAN | elmo grego com crista | golpe pesado, preparação longa |
+  | KING BLOB | coroa, corpo largo | soco duplo |
+  | VIKING | chifres | pula e esmaga o ringue (onda de poeira) |
+  | PUNK | moicano | sequência de 3 socos |
+
+  Golpes diferentes, mesmo dano médio por segundo (coberto por teste); adicionar um chefe é adicionar uma linha.
 - A vida que sobrar decide até onde o Boss voa na pista **x1.0 … x5.0**, que multiplica as moedas.
 - Moedas compram upgrades no menu: **Damage** (força do soco) e **Blobs** (tamanho inicial).
 
@@ -35,6 +47,7 @@ Testes (Node 18+): `npm test`
 | Módulo | Responsabilidade | three.js? |
 |---|---|---|
 | `src/config.js` | Todos os números ajustáveis e a paleta de cores | não |
+| `src/bosses.js` | Elenco de chefes (visual + padrão de ataque) como dados | não |
 | `src/rng.js` | PRNG com seed (fases reproduzíveis) | não |
 | `src/rules.js` | Regras puras: portões, formação da multidão, colisões, briga, Boss, bônus, upgrades | não |
 | `src/level.js` | Gera a fase como **dados** (portões, obstáculos, moedas, inimigos, Boss) | não |

@@ -6,6 +6,7 @@ import {
   createMelon, createPillar, createRing, createSpikeField, createSpikePad, createSpringGlove, createTrack,
   gummyMaterial, humanoidGeometry,
 } from './art/models.js';
+import { bossForLevel } from './bosses.js';
 import { Crowd } from './crowd.js';
 
 export const toZ = (d) => -d;
@@ -103,7 +104,7 @@ export function buildLevelView(scene, level) {
 
   place(createFinishLine(), level.finishD);
   place(createRing(CONFIG.boss.ringDepth), level.finishD + 0.6);
-  const boss = createBoss(PALETTE.bosses[(level.level - 1) % PALETTE.bosses.length]);
+  const boss = createBoss(bossForLevel(level.level));
   place(boss.root, level.boss.d);
   boss.root.position.y = 0.25;
   place(ladder.group, level.ladderStart);
