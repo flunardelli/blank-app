@@ -52,7 +52,7 @@ export function circleHitsBox(cx, cd, r, box) {
   return dx * dx + dd * dd < r * r;
 }
 
-export function melonX({ edgeX, reach, speed, phase }, time) {
+export function sliderX({ edgeX, reach, speed, phase }, time) {
   const inset = reach * (0.5 - 0.5 * Math.cos(speed * time + phase));
   return edgeX - Math.sign(edgeX) * inset;
 }
@@ -63,9 +63,10 @@ export function crossesObstacle(obstacle, time, x, prevD, d, r) {
 }
 
 export function obstacleHits(obstacle, time, x, d, r) {
-  if (obstacle.kind === 'melon') {
-    return circlesOverlap(x, d, r, melonX(obstacle, time), obstacle.d, obstacle.radius);
+  if (obstacle.kind === 'slider') {
+    return circlesOverlap(x, d, r, sliderX(obstacle, time), obstacle.d, obstacle.radius);
   }
+  if (obstacle.kind === 'trap') return Math.abs(d - obstacle.d) < obstacle.halfDepth + r; // full width
   return obstacle.pads.some((pad) => circleHitsBox(x, d, r, { ...pad, d: obstacle.d }));
 }
 
@@ -81,31 +82,25 @@ export function clashStep(a, b, rate, dt) {
   return [a - loss, b - loss];
 }
 
-// ---- Boss fight --------------------------------------------------------------
-export function bossLaunchRate(count, { fightSeconds, minLaunchRate } = CONFIG.boss) {
-  return Math.max(minLaunchRate, count / fightSeconds);
+export function pressesButton(button, x, d, r) {
+  return circlesOverlap(x, d, r, button.x, button.d, button.radius);
 }
 
-/**
- * The crowd charges the boss one blob at a time; each blob deals `damage` and is spent.
- * `carry` keeps the fractional launch budget between frames.
- */
-export function bossFightStep({ count, hp, carry, damage }, rate, dt) {
-  const budget = carry + rate * dt;
-  const launched = Math.min(count, Math.floor(budget), Math.ceil(hp / damage));
-  return {
-    count: count - launched,
-    hp: Math.max(0, hp - launched * damage),
-    carry: budget - Math.floor(budget),
-    damage,
-    launched,
-  };
+// ---- Boss fight (boxing) -----------------------------------------------------
+// The crowd merges into one champion: HP is the crowd size, punch power grows with it.
+export function championStats(count, damageLevel, { punchPerBlob } = CONFIG.boxing) {
+  return { hp: count, punch: count * punchPerBlob * damageFor(damageLevel) };
 }
 
-export function bossFightResult({ count, hp }) {
-  if (hp <= 0) return 'won';
-  if (count <= 0) return 'lost';
-  return null;
+// The boss drains any champion in `bossKillSeconds`, so the player has to out-tap that clock.
+export function bossPunchDamage(championHp, { bossKillSeconds, bossPunchInterval } = CONFIG.boxing) {
+  return (championHp / bossKillSeconds) * bossPunchInterval;
+}
+
+/** Taps per second needed to knock the boss out before the boss wins. */
+export function requiredTapRate(count, bossHp, damageLevel, cfg = CONFIG.boxing) {
+  const { punch } = championStats(count, damageLevel, cfg);
+  return bossHp / (punch * cfg.bossKillSeconds);
 }
 
 export function bossDifficulty(level, { baseDifficulty, difficultyPerLevel, maxDifficulty } = CONFIG.boss) {
@@ -113,15 +108,18 @@ export function bossDifficulty(level, { baseDifficulty, difficultyPerLevel, maxD
 }
 
 // ---- Rewards & progression -----------------------------------------------------
-// Survivors after the KO decide how far the boss flies down the x1.0 … x5.0 bonus ladder.
-export function bonusMultiplier(survivors, bossHp, { maxMultiplier, step } = CONFIG.bonus) {
-  const ratio = clamp(survivors / Math.max(1, bossHp), 0, 1);
-  const raw = 1 + (maxMultiplier - 1) * ratio;
+// The champion's remaining health decides how far the boss flies down the x1.0 … x5.0 ladder.
+export function bonusMultiplier(healthFraction, { maxMultiplier, step } = CONFIG.bonus) {
+  const raw = 1 + (maxMultiplier - 1) * clamp(healthFraction, 0, 1);
   return Math.round(Math.round(raw / step) * step * 10) / 10;
 }
 
 export function rewardCoins(collected, level, multiplier, { base, perLevel } = CONFIG.reward) {
   return Math.round((base + perLevel * level + collected) * multiplier);
+}
+
+export function chestReward(level, { chestCoinsPerLevel } = CONFIG.keys) {
+  return chestCoinsPerLevel * (level + 4);
 }
 
 export function upgradeCost(level, { baseCost, costGrowth } = CONFIG.upgrades) {

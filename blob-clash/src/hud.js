@@ -12,6 +12,30 @@ export class Hud {
     this.progress = $('progress-fill');
     this.bubbles = $('bubbles');
     this.screens = { menu: $('menu'), complete: $('complete'), lose: $('lose') };
+    this.keySlots = [...document.querySelectorAll('.key-slot')];
+    this.levelBadge = $('level-badge');
+    this.fight = $('fight');
+    this.hpPlayer = $('hp-player');
+    this.hpBoss = $('hp-boss');
+  }
+
+  setLevel(level) {
+    this.levelBadge.textContent = level;
+  }
+
+  setKeys(count) {
+    this.keySlots.forEach((slot, i) => slot.classList.toggle('filled', i < count));
+  }
+
+  showFight(visible, bossColor = 0x6fe04a) {
+    this.fight.hidden = !visible;
+    this.fight.style.setProperty('--boss-color', `#${bossColor.toString(16).padStart(6, '0')}`);
+    this.topbar.classList.toggle('fighting', visible);
+  }
+
+  setFight(playerFraction, bossFraction) {
+    this.hpPlayer.style.width = `${THREE.MathUtils.clamp(playerFraction, 0, 1) * 100}%`;
+    this.hpBoss.style.width = `${THREE.MathUtils.clamp(bossFraction, 0, 1) * 100}%`;
   }
 
   setCoins(n) {
@@ -65,8 +89,10 @@ export class Hud {
     this.show('menu');
   }
 
-  showComplete({ level, coins, multiplier, onNext }) {
+  showComplete({ level, coins, multiplier, chest, onNext }) {
     $('complete-level').textContent = `Level ${level}`;
+    $('complete-chest').hidden = !chest;
+    $('complete-chest').querySelector('span').textContent = `Chest +${chest}`;
     $('complete-coins').textContent = coins;
     $('complete-multiplier').textContent = `x${multiplier.toFixed(1)}`;
     $('complete-next').onclick = onNext;

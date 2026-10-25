@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  applyGate, bestGate, bonusMultiplier, bossFightResult, bossFightStep, circleHitsBox, clashStep,
-  crowdSpacing, formationRadius, formatCoins, gateLabel, obstacleHits, rewardCoins, upgradeCost,
+  applyGate, bestGate, bonusMultiplier, bossPunchDamage, championStats, circleHitsBox, clashStep,
+  crowdSpacing, formationRadius, formatCoins, gateLabel, obstacleHits, pressesButton, requiredTapRate,
+  rewardCoins, upgradeCost,
 } from '../src/rules.js';
 
 test('gates apply their operation and clamp to [0, max]', () => {
@@ -35,14 +36,22 @@ test('circle vs box collision', () => {
   assert.ok(!circleHitsBox(2.9, 11.4, 1, box)); // corner gap
 });
 
-test('melon slides in from its edge and back; spike pads are static boxes', () => {
-  const melon = { kind: 'melon', d: 0, radius: 1, edgeX: 5, reach: 3, speed: 1, phase: 0 };
-  assert.ok(!obstacleHits(melon, 0, 2, 0, 0.3)); // retracted at the edge (x = 5)
-  assert.ok(obstacleHits(melon, Math.PI, 2, 0, 0.3)); // fully in (x = 2)
-  assert.ok(obstacleHits(melon, 0, 4.5, 0, 0.3)); // the edge is never safe
+test('sliders move in from their edge and back; spike pads are static; traps span the track', () => {
+  const slider = { kind: 'slider', d: 0, radius: 1, edgeX: 5, reach: 3, speed: 1, phase: 0 };
+  assert.ok(!obstacleHits(slider, 0, 2, 0, 0.3)); // retracted at the edge (x = 5)
+  assert.ok(obstacleHits(slider, Math.PI, 2, 0, 0.3)); // fully in (x = 2)
+  assert.ok(obstacleHits(slider, 0, 4.5, 0, 0.3)); // the edge is never safe
   const spikes = { kind: 'spikes', d: 5, pads: [{ x: -3, halfWidth: 1, halfDepth: 1 }] };
   assert.ok(obstacleHits(spikes, 0, -3, 5, 0.3));
   assert.ok(!obstacleHits(spikes, 0, 0, 5, 0.3));
+  const trap = { kind: 'trap', d: 5, halfDepth: 1 };
+  assert.ok([-4.5, 0, 4.5].every((x) => obstacleHits(trap, 0, x, 5, 0.3)));
+});
+
+test('a body on the button presses it', () => {
+  const button = { x: 3, d: 10, radius: 0.9 };
+  assert.ok(pressesButton(button, 3.5, 10.5, 0.3));
+  assert.ok(!pressesButton(button, 0, 10, 0.3));
 });
 
 test('crowd clash: the bigger side survives with the difference', () => {
@@ -52,27 +61,26 @@ test('crowd clash: the bigger side survives with the difference', () => {
   assert.ok(Math.abs(a - 10) < 1e-9);
 });
 
-test('boss fight spends exactly enough blobs to finish the boss', () => {
-  let state = { count: 30, hp: 20, carry: 0, damage: 1 };
-  while (!bossFightResult(state)) state = bossFightStep(state, 12, 1 / 60);
-  assert.equal(bossFightResult(state), 'won');
-  assert.equal(state.count, 10);
+test('champion scales with the crowd; tapping speed needed scales with boss HP', () => {
+  const small = championStats(20, 1);
+  const big = championStats(80, 1);
+  assert.equal(big.hp, 80);
+  assert.ok(big.punch === small.punch * 4);
+  assert.ok(championStats(20, 3).punch > small.punch); // Damage upgrade
+  assert.ok(requiredTapRate(80, 50, 1) < requiredTapRate(40, 50, 1));
+  assert.ok(requiredTapRate(80, 100, 1) > requiredTapRate(80, 50, 1));
 });
 
-test('boss fight with stronger damage needs fewer blobs; too few blobs lose', () => {
-  let strong = { count: 10, hp: 20, carry: 0, damage: 2.5 };
-  while (!bossFightResult(strong)) strong = bossFightStep(strong, 12, 1 / 60);
-  assert.equal(strong.count, 2);
-  let weak = { count: 10, hp: 20, carry: 0, damage: 1 };
-  while (!bossFightResult(weak)) weak = bossFightStep(weak, 12, 1 / 60);
-  assert.equal(bossFightResult(weak), 'lost');
+test('the boss knocks out any champion in bossKillSeconds', () => {
+  const cfg = { bossKillSeconds: 8, bossPunchInterval: 1 };
+  assert.equal(bossPunchDamage(80, cfg) * 8, 80);
 });
 
-test('bonus multiplier grows with survivors, snapped to 0.2 steps, capped at x5', () => {
-  assert.equal(bonusMultiplier(0, 50), 1);
-  assert.equal(bonusMultiplier(25, 50), 3);
-  assert.equal(bonusMultiplier(500, 50), 5);
-  assert.equal(bonusMultiplier(7, 50), 1.6);
+test('bonus multiplier grows with remaining health, snapped to 0.2 steps, capped at x5', () => {
+  assert.equal(bonusMultiplier(0), 1);
+  assert.equal(bonusMultiplier(0.5), 3);
+  assert.equal(bonusMultiplier(2), 5);
+  assert.equal(bonusMultiplier(0.14), 1.6);
 });
 
 test('rewards, upgrade costs and coin formatting', () => {

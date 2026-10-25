@@ -10,11 +10,14 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 ## Como jogar
 - Segure e arraste (ou ← → / A D) para mover sua **multidão de bonequinhos de gelatina**. O número no balão azul é o tamanho dela.
 - **Portões +N / ×N** aumentam a multidão; os vermelhos (−N / ÷N) diminuem. A metade que você atravessa vale.
-- **Fatias de melancia** entram e saem pelas bordas; **espinhos** ficam nas laterais. Quem encosta, morre.
+- **Obstáculos:** fatias de melancia e **luvas de boxe em mola** que entram pelas bordas, e espinhos nas laterais.
+- **Armadilha com botão:** espinhos na pista inteira. Pise no **botão verde** antes deles para recolhê-los, senão a multidão morre.
 - **Multidões vermelhas** bloqueiam a pista: os dois lados se anulam um a um.
-- No **ringue**, a multidão ataca o **Boss** de luvas de boxe. Cada bonequinho tira `Damage` de vida.
-- Os sobreviventes decidem até onde o Boss nocauteado voa na pista **x1.0 … x5.0**, que multiplica as moedas.
-- Moedas compram upgrades no menu: **Damage** (dano por bonequinho) e **Blobs** (tamanho inicial).
+- **Moedas** na pista e **uma chave por fase**. Com 3 chaves, abre um **baú** de moedas.
+- **Boss:** a multidão se funde num campeão de luvas. **TAP TO FIGHT!** Cada toque é um soco, e o Boss revida em ritmo.
+  Multidão maior dá mais vida e soco mais forte; o Boss derruba qualquer campeão em ~10 s, então é preciso tocar rápido.
+- A vida que sobrar decide até onde o Boss voa na pista **x1.0 … x5.0**, que multiplica as moedas.
+- Moedas compram upgrades no menu: **Damage** (força do soco) e **Blobs** (tamanho inicial).
 
 ## Rodando
 ES modules não funcionam via `file://`, então sirva a pasta por HTTP:
@@ -39,13 +42,13 @@ Testes (Node 18+): `npm test`
 | `src/art/models.js` | Modelos procedurais: bonequinho de gelatina, Boss, melancia, espinhos, ringue, escada de bônus | sim |
 | `src/crowd.js` | Multidão como um único `InstancedMesh` | sim |
 | `src/levelView.js` | Converte os dados da fase em objetos 3D | sim |
-| `src/game.js` | Máquina de estados `menu → running ⇄ skirmish → boss → bonus → complete / lost` | sim |
+| `src/game.js` | Máquina de estados `menu → running ⇄ skirmish → merge → boxing → bonus → complete / lost` | sim |
 | `src/effects.js`, `hud.js`, `input.js`, `save.js`, `world.js` | Efeitos, UI em DOM, input, progresso salvo, cenário | sim |
 
 Não há nenhum arquivo de imagem: toda a arte é gerada por código.
 
 A vida do Boss vem da **maior multidão possível** na fase (escolhendo sempre o melhor portão e
 descontando os inimigos), multiplicada por uma dificuldade que sobe de 40% a 90% com o nível.
-Assim toda fase é vencível por construção, e isso é coberto por teste.
+Um teste garante que, com a melhor multidão, a luta pede no máximo 6 toques/s (e ≤ 3 na fase 1).
 
 Dependências versionadas em `vendor/`: three.js 0.169.0 (MIT) e a fonte Fredoka (OFL).

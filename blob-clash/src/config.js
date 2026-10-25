@@ -2,8 +2,16 @@
 export const PALETTE = {
   player: { bottom: 0xffb52e, top: 0xff3a1c, splat: 0xff7a1a },
   enemy: { bottom: 0xe8506a, top: 0x9e1430, splat: 0x8f1d25 },
-  boss: { bottom: 0xff8f8f, top: 0xd8283e },
+  // Boss colour cycles per level, like the reference's red and green brawlers.
+  bosses: [
+    { bottom: 0xff8f8f, top: 0xd8283e },
+    { bottom: 0xb6ff4a, top: 0x2fbf1a },
+    { bottom: 0xd8a8ff, top: 0x7a3fe0 },
+  ],
   glove: 0x2f56d6,
+  championGlove: 0xd8264a,
+  button: 0x3ee05a,
+  key: 0xffc21a,
   hat: 0xffc83d,
   goodGlass: 0x6fd0ff,
   badGlass: 0xff7f8f,
@@ -56,10 +64,16 @@ export const CONFIG = {
   },
   skirmish: { minRatePerSecond: 8, rateFraction: 1.2 },
   obstacle: {
-    // Melon slices live at a track edge and slide in by up to `melonReach` units, then back out.
-    melonRadius: 1.5,
-    melonReach: 3.4,
-    melonSpeed: 1.8,
+    // Sliders (melon slices, spring boxing gloves) live at a track edge and slide in by up to
+    // `sliderReach` units, then back out.
+    sliderRadius: 1.5,
+    sliderReach: 3.4,
+    sliderSpeed: 1.8,
+    // Trap: full-width spike field; stepping on its button (placed ahead of it) retracts it.
+    trapHalfDepth: 1.4,
+    trapButtonLead: 9,
+    trapButtonRadius: 0.9,
+    weights: { slider: 0.4, spikes: 0.3, trap: 0.3 },
     spikeHalfDepth: 1.1,
     // Spike pads hug the track edges (like the reference): [centre x, half width] per pad.
     spikeLayouts: [
@@ -75,12 +89,18 @@ export const CONFIG = {
     baseDifficulty: 0.4, // boss HP as a share of the best reachable crowd
     difficultyPerLevel: 0.04,
     maxDifficulty: 0.9,
-    fightSeconds: 2.5,
-    minLaunchRate: 6,
     finishGap: 4, // straight run between the last segment and the finish line
     ringDepth: 11,
   },
+  // Boss fight: the crowd merges into one champion; every tap is a punch.
+  boxing: {
+    punchPerBlob: 1 / 30, // champion punch damage per blob in the crowd
+    bossKillSeconds: 10, // the boss knocks out any champion in this long: tap fast enough
+    bossPunchInterval: 1.2,
+    tapCooldown: 0.06,
+  },
   bonus: { maxMultiplier: 5, step: 0.2, tileDepth: 2.6 },
+  keys: { perChest: 3, chestCoinsPerLevel: 60 },
   reward: { base: 50, perLevel: 10 },
   upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
 };

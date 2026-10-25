@@ -1,6 +1,6 @@
 // Progress persistence. Storage can be unavailable (private mode), so every access is guarded.
 const KEY = 'blob-clash.save.v2';
-const DEFAULTS = { level: 1, coins: 0, upgrades: { damage: 1, blobs: 1 } };
+const DEFAULTS = { level: 1, coins: 0, keys: 0, upgrades: { damage: 1, blobs: 1 } };
 
 export function loadSave() {
   try {

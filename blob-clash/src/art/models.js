@@ -60,9 +60,9 @@ export function humanoidGeometry({ bottom, top }) {
 }
 
 // ---- Boss: big gummy brawler with boxing gloves and a party hat ------------------
-function glove() {
+export function glove(color = PALETTE.glove) {
   const group = new THREE.Group();
-  const material = glossy(PALETTE.glove, { roughness: 0.25, metalness: 0.05 });
+  const material = glossy(color, { roughness: 0.25, metalness: 0.05 });
   const fist = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 16), material);
   fist.scale.set(1, 1.1, 1.15);
   const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), material);
@@ -92,7 +92,7 @@ function angryEyes() {
   return face;
 }
 
-export function createBoss() {
+export function createBoss(colors) {
   const root = new THREE.Group();
   const body = new THREE.Group(); // squash & stretch pivot
   root.add(body);
@@ -102,7 +102,7 @@ export function createBoss() {
     beanGeometry(28).scale(1, 1.05, 0.85),
     limb(0.15, 0.3, -0.2, 0.2, 0),
     limb(0.15, 0.3, 0.2, 0.2, 0),
-  ]), PALETTE.boss.bottom, PALETTE.boss.top, 0.1, 1.6), material);
+  ]), colors.bottom, colors.top, 0.1, 1.6), material);
   torso.castShadow = true;
   body.add(torso, angryEyes());
 
@@ -110,7 +110,7 @@ export function createBoss() {
     const shoulder = new THREE.Group();
     shoulder.position.set(side * 0.42, 1.0, 0);
     const upper = new THREE.Mesh(
-      paintGradient(new THREE.CapsuleGeometry(0.12, 0.45, 4, 10).translate(0, -0.3, 0), PALETTE.boss.bottom, PALETTE.boss.top, -0.6, 0),
+      paintGradient(new THREE.CapsuleGeometry(0.12, 0.45, 4, 10).translate(0, -0.3, 0), colors.bottom, colors.top, -0.6, 0),
       material,
     );
     upper.castShadow = true;
@@ -131,6 +131,24 @@ export function createBoss() {
   return { root, body, arms };
 }
 
+// The crowd merged into one boxer: the player's gummy body plus red gloves it can swing.
+export function createChampion(geometry, material) {
+  const root = new THREE.Group();
+  const body = new THREE.Mesh(geometry, material);
+  body.castShadow = true;
+  root.add(body);
+  const gloves = [-1, 1].map((side) => {
+    const g = glove(PALETTE.championGlove);
+    g.scale.setScalar(0.85);
+    g.rotation.x = -Math.PI / 2; // fist forward, cuff towards the body
+    g.position.set(side * 0.55, 0.85, 0.45);
+    g.userData.rest = g.position.clone();
+    root.add(g);
+    return g;
+  });
+  return { root, body, gloves };
+}
+
 // ---- Obstacles ------------------------------------------------------------------
 export function createMelon(radius) {
   const face = new THREE.MeshStandardMaterial({ map: melonFaceTexture(), roughness: 0.5 });
@@ -141,6 +159,36 @@ export function createMelon(radius) {
   const mesh = new THREE.Mesh(geometry, [rind, face, face]);
   mesh.castShadow = true;
   return mesh;
+}
+
+// Spring-loaded boxing glove punching out of a pillar at the track edge.
+export function createSpringGlove(radius, side) {
+  const group = new THREE.Group();
+  const fist = glove(0xe8584a);
+  fist.scale.setScalar(radius * 2.6); // fist ≈ collision radius, so hits look fair
+  fist.rotation.z = -side * Math.PI / 2; // fist faces the track centre, cuff the pillar
+  fist.position.y = 1.3;
+  group.add(fist);
+  // The spring is a helix that stretches back to the pillar; game.js scales it along x.
+  const points = Array.from({ length: 120 }, (_, i) => {
+    const t = i / 119;
+    const a = t * Math.PI * 2 * 9;
+    return new THREE.Vector3(t, Math.sin(a) * 0.25, Math.cos(a) * 0.25);
+  });
+  const spring = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 240, 0.05, 6),
+    glossy(0x5a5ad6),
+  );
+  spring.position.y = 1.3;
+  group.add(spring);
+  return { group, fist, spring };
+}
+
+export function createPillar(height = 3.2) {
+  const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.1, height, 1.1), glossy(0xf08080));
+  pillar.position.y = height / 2;
+  pillar.castShadow = true;
+  return pillar;
 }
 
 export function createSpikePad(halfWidth, halfDepth) {
@@ -159,6 +207,45 @@ export function createSpikePad(halfWidth, halfDepth) {
       group.add(spike);
     }
   }
+  return group;
+}
+
+export function createButton(radius) {
+  const group = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.25, radius * 1.35, 0.18, 32), glossy(0x6a3fc8));
+  base.position.y = 0.09;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.9, radius, 0.3, 32),
+    glossy(PALETTE.button, { emissive: PALETTE.button, emissiveIntensity: 0.25 }));
+  cap.position.y = 0.3;
+  base.receiveShadow = true;
+  cap.castShadow = true;
+  group.add(base, cap);
+  return { group, cap };
+}
+
+// Spikes across the whole track; `spikes` is lowered into the floor once disarmed.
+export function createSpikeField(halfDepth) {
+  const half = CONFIG.track.width / 2;
+  const group = createSpikePad(half, halfDepth);
+  const spikes = new THREE.Group();
+  [...group.children].slice(1).forEach((spike) => spikes.add(spike));
+  group.add(spikes);
+  return { group, spikes };
+}
+
+export function createKey() {
+  const group = new THREE.Group();
+  const material = glossy(PALETTE.key, { metalness: 0.4, roughness: 0.25, emissive: PALETTE.key, emissiveIntensity: 0.2 });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.11, 12, 24), material);
+  ring.position.y = 0.45;
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.8, 0.12), material);
+  shaft.position.y = -0.15;
+  const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.12, 0.12), material);
+  tooth.position.set(0.14, -0.42, 0);
+  const tooth2 = tooth.clone();
+  tooth2.position.y = -0.24;
+  group.add(ring, shaft, tooth, tooth2);
+  group.traverse((o) => { o.castShadow = true; });
   return group;
 }
 

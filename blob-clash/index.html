@@ -21,12 +21,25 @@
   <div id="bubbles"></div>
 
   <header id="topbar">
+    <div id="keys"><i class="key-slot"></i><i class="key-slot"></i><i class="key-slot"></i></div>
     <div id="progress-wrap">
+      <div id="level-badge" class="ink">1</div>
       <div id="progress"><div id="progress-fill"></div></div>
       <div class="flag"></div>
     </div>
     <div id="coins"><span id="coins-value" class="ink">0</span><i class="coin-icon big"></i></div>
   </header>
+
+  <section id="fight" hidden>
+    <div class="fight-bars">
+      <div class="fighter"><i class="blob-icon player"></i><div class="hp"><div id="hp-player"></div></div></div>
+      <div class="fighter boss"><div class="hp"><div id="hp-boss"></div></div><i class="blob-icon boss"></i></div>
+    </div>
+    <div class="tap-hint">
+      <div class="tap-hand"><span class="ripple"></span>👆</div>
+      <p class="outline">TAP TO FIGHT!</p>
+    </div>
+  </section>
 
   <section id="menu" class="screen" hidden>
     <h1 id="menu-level" class="ink title">Level 1</h1>
@@ -45,6 +58,7 @@
       <span id="complete-coins" class="ink">0</span>
       <span id="complete-multiplier" class="pill">x1.0</span>
     </div>
+    <div id="complete-chest" class="chest ink" hidden>🎁 <span></span></div>
     <button id="complete-next" class="btn cyan ink">NEXT</button>
   </section>
 

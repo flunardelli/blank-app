@@ -20,23 +20,39 @@ function makeGatePair(rng, d, level, cfg, forceGood) {
   return { d, left, right };
 }
 
-// One melon on a random edge, or a pair on both edges sliding in turns.
-function makeMelons(rng, d, cfg) {
+// One slider on a random edge, or a pair on both edges sliding in turns.
+function makeSliders(rng, d, cfg) {
   const ob = cfg.obstacle;
   const half = cfg.track.width / 2;
   const phase = rng.next() * Math.PI * 2;
-  const melon = (side, offset) => ({
-    kind: 'melon', d, radius: ob.melonRadius, edgeX: side * half,
-    reach: ob.melonReach, speed: ob.melonSpeed, phase: phase + offset,
+  const skin = rng.pick(['melon', 'glove']);
+  const slider = (side, offset) => ({
+    kind: 'slider', skin, d, radius: ob.sliderRadius, edgeX: side * half,
+    reach: ob.sliderReach, speed: ob.sliderSpeed, phase: phase + offset,
   });
-  return rng.chance(0.5) ? [melon(rng.pick([-1, 1]), 0)] : [melon(-1, 0), melon(1, Math.PI)];
+  return rng.chance(0.5) ? [slider(rng.pick([-1, 1]), 0)] : [slider(-1, 0), slider(1, Math.PI)];
 }
 
-function makeObstacles(rng, d, cfg) {
+function makeSpikes(rng, d, cfg) {
   const ob = cfg.obstacle;
-  if (rng.chance(0.5)) return makeMelons(rng, d, cfg);
   const pads = rng.pick(ob.spikeLayouts).map(([x, halfWidth]) => ({ x, halfWidth, halfDepth: ob.spikeHalfDepth }));
   return [{ kind: 'spikes', d, pads }];
+}
+
+// Full-width spikes: deadly unless the crowd steps on the button placed ahead of them.
+function makeTrap(rng, d, cfg) {
+  const ob = cfg.obstacle;
+  const button = { x: rng.pick(cfg.track.lanes), d: d - ob.trapButtonLead, radius: ob.trapButtonRadius };
+  return [{ kind: 'trap', d, halfDepth: ob.trapHalfDepth, button }];
+}
+
+const OBSTACLE_MAKERS = { slider: makeSliders, spikes: makeSpikes, trap: makeTrap };
+
+function makeObstacles(rng, d, cfg) {
+  const { weights } = cfg.obstacle;
+  let roll = rng.next() * Object.values(weights).reduce((a, b) => a + b, 0);
+  const kind = Object.keys(weights).find((k) => (roll -= weights[k]) < 0) ?? 'slider';
+  return OBSTACLE_MAKERS[kind](rng, d, cfg);
 }
 
 function makeCoinRow(rng, d, cfg) {
@@ -73,12 +89,16 @@ export function generateLevel(level, cfg = CONFIG) {
   }
 
   const finishD = d + cfg.boss.finishGap;
+  // One key per level, between two segments' coin rows.
+  const keySegment = rng.int(1, segments - 1);
+  const key = { x: rng.pick(track.lanes), d: track.introLength + keySegment * track.segmentLength - 4 };
   const bossD = finishD + cfg.boss.ringDepth / 2 + 1;
   return {
     level,
     gates,
     obstacles,
     coins: coins.map((c, id) => ({ ...c, id })),
+    key,
     enemies: enemies.map((e, id) => ({ ...e, id })),
     finishD,
     boss: { d: bossD, hp: Math.max(5, Math.round(bestCount * bossDifficulty(level, cfg.boss))) },
