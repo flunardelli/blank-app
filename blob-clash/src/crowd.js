@@ -1,6 +1,7 @@
 // A crowd of gummy humanoids rendered as one InstancedMesh.
 // `count` is the logical size (can exceed what we draw); `units` are the visible bodies.
 import * as THREE from 'three';
+import { jellyClock } from './art/jelly.js';
 import { crowdSpacing, formationRadius, formationSlot } from './rules.js';
 
 const matrix = new THREE.Matrix4();
@@ -62,6 +63,7 @@ export class Crowd {
   }
 
   update(dt, time) {
+    jellyClock.value = time;
     const spacing = crowdSpacing(this.units.length);
     const follow = Math.min(1, dt * 9);
     const tightness = this.mood === 'fight' ? 0.75 : 1;

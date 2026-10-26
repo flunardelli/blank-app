@@ -25,6 +25,9 @@ export const bestGate = (count, pair) =>
 // Sunflower (phyllotaxis) packing: round, dense and stable as the crowd grows.
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
+// Wobble phase of the i-th body: the golden angle keeps neighbours (and re-indexed survivors) out of step.
+export const jellyPhase = (index) => (index * GOLDEN_ANGLE) % (Math.PI * 2);
+
 export function formationSlot(index, spacing) {
   const r = spacing * Math.sqrt(index);
   const a = index * GOLDEN_ANGLE;
