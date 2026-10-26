@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   applyGate, bestGate, blastVictims, jumpLift, onRamp, sweepX, bonusMultiplier, bossPunchDamage, championStats, circleHitsBox, clashStep,
   crowdSpacing, formationRadius, formatCoins, gateLabel, obstacleHits, pressesButton, requiredTapRate,
-  rewardCoins, upgradeCost,
+  rewardCoins, upgradeCost, jellyPhase,
 } from '../src/rules.js';
 
 test('gates apply their operation and clamp to [0, max]', () => {
@@ -142,4 +142,11 @@ test('a bomb blast takes everyone inside its radius', () => {
   const bomb = { x: 0, d: 10, blast: 2 };
   const bodies = [{ x: 0, d: 10 }, { x: 1.5, d: 11 }, { x: 3, d: 10 }, { x: 0, d: 12.5 }];
   assert.deepEqual(blastVictims(bomb, bodies), [0, 1]);
+});
+
+test('jelly phases stay in one turn and keep bodies out of step', () => {
+  const phases = Array.from({ length: 90 }, (_, i) => jellyPhase(i));
+  assert.ok(phases.every((p) => p >= 0 && p < Math.PI * 2));
+  assert.equal(new Set(phases.map((p) => p.toFixed(6))).size, phases.length);
+  assert.ok(phases.slice(1).every((p, i) => Math.abs(p - phases[i]) > 0.5 || Math.abs(p - phases[i]) > Math.PI * 2 - 0.5));
 });
