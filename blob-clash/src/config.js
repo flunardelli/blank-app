@@ -139,6 +139,12 @@ export const CONFIG = {
   },
   bonus: { maxMultiplier: 5, step: 0.2, tileDepth: 2.6 },
   campaign: { levels: 30, starsAt: [2, 4] }, // x1–x2 = 1 star, up to x4 = 2, above = 3
+  // Dev-only shortcuts: each entry is a key sequence that jumps straight to the boss fight.
+  dev: {
+    skipCrowdShare: 0.7, // crowd handed to the player: at least this share of the level's best count
+    cheatTimeout: 3, // seconds allowed between two keys of a sequence
+    cheats: [['KeyB', 'KeyL', 'KeyO', 'KeyB'], ['KeyI', 'KeyD', 'KeyD', 'KeyQ', 'KeyD']],
+  },
   keys: { perChest: 3, chestCoinsPerLevel: 60 },
   reward: { base: 50, perLevel: 10 },
   upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
