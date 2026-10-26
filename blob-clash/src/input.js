@@ -6,8 +6,10 @@ export class Input {
     this.lastPointerX = null;
     this.pressListeners = [];
     this.keyListeners = [];
+    this.locked = false; // while true (game paused) presses and movement are ignored
 
     window.addEventListener('keydown', (e) => {
+      if (this.locked) return;
       this.keys.add(e.code);
       if (!e.repeat) this.keyListeners.forEach((listener) => listener(e.code));
       // Letters steer but don't start the run: they're reserved for the dev cheat sequences.
@@ -38,7 +40,15 @@ export class Input {
     this.keyListeners.push(listener);
   }
 
+  /** Locking also drops held keys and drag so nothing moves the instant the game resumes. */
+  setLocked(locked) {
+    this.locked = locked;
+    this.keys.clear();
+    this.dragPixels = 0;
+  }
+
   emitPress() {
+    if (this.locked) return;
     this.pressListeners.forEach((listener) => listener());
   }
 

@@ -12,6 +12,8 @@ export class Hud {
     this.progress = $('progress-fill');
     this.bubbles = $('bubbles');
     this.screens = { menu: $('menu'), complete: $('complete'), lose: $('lose') };
+    this.pauseButton = $('pause-btn');
+    this.pauseScreen = $('pause');
     this.keySlots = [...document.querySelectorAll('.key-slot')];
     this.levelBadge = $('level-badge');
     this.fight = $('fight');
@@ -88,6 +90,21 @@ export class Hud {
   show(name) {
     Object.entries(this.screens).forEach(([key, el]) => { el.hidden = key !== name; });
     this.topbar.classList.toggle('hidden-progress', name === 'menu');
+    this.pauseButton.hidden = name !== null; // only offered while a level is being played
+  }
+
+  /** True while the pause button is on screen, i.e. a level is running and no other screen is up. */
+  canPause() {
+    return !this.pauseButton.hidden;
+  }
+
+  showPause(visible) {
+    this.pauseScreen.hidden = !visible;
+  }
+
+  bindPause({ onPause, onResume }) {
+    this.pauseButton.addEventListener('click', onPause);
+    $('pause-resume').addEventListener('click', onResume);
   }
 
   showMenu({ level, upgrades, onBuy }) {
