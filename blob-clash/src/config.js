@@ -138,6 +138,7 @@ export const CONFIG = {
     openingMultiplier: 2.5, // the fight opens with a free flying punch
   },
   bonus: { maxMultiplier: 5, step: 0.2, tileDepth: 2.6 },
+  campaign: { levels: 30, starsAt: [2, 4] }, // x1–x2 = 1 star, up to x4 = 2, above = 3
   keys: { perChest: 3, chestCoinsPerLevel: 60 },
   reward: { base: 50, perLevel: 10 },
   upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },

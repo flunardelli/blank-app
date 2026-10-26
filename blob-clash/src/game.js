@@ -13,6 +13,7 @@ import {
   clashRate, clashStep, comboStep, crossesObstacle, jumpLift, onRamp, pressesButton, rewardCoins, sliderX,
   startBlobsFor, sweepX, upgradeCost,
 } from './rules.js';
+import { completeLevel } from './progress.js';
 import { loadSave, writeSave } from './save.js';
 
 const UPGRADES = [
@@ -42,7 +43,7 @@ export class Game {
       if (this.state === 'menu') this.start();
       else if (this.state === 'boxing') this.championPunch();
     });
-    this.loadLevel(this.save.level);
+    this.loadLevel(this.save.current);
   }
 
   // ---- Level lifecycle ----------------------------------------------------------
@@ -537,13 +538,13 @@ export class Game {
       this.save.keys = 0;
     }
     this.save.coins += reward + chest;
-    this.save.level = this.level.level + 1;
+    this.save = completeLevel(this.save, this.level.level, this.multiplier);
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
     this.hud.setKeys(this.save.keys);
     this.hud.showComplete({
       level: this.level.level, coins: reward, multiplier: this.multiplier, chest,
-      onNext: () => this.loadLevel(this.save.level),
+      onNext: () => this.loadLevel(this.save.current),
     });
   }
 
