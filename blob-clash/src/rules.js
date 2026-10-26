@@ -1,5 +1,6 @@
 // Pure gameplay rules: no three.js, no DOM. Everything here is unit-tested.
 import { CONFIG } from './config.js';
+import { levelInfo } from './worlds.js';
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -139,8 +140,10 @@ export function requiredTapRate(count, bossHp, damageLevel, cfg = CONFIG.boxing)
   return bossHp / (punch * cfg.bossKillSeconds);
 }
 
-export function bossDifficulty(level, { baseDifficulty, difficultyPerLevel, maxDifficulty } = CONFIG.boss) {
-  return Math.min(maxDifficulty, baseDifficulty + difficultyPerLevel * (level - 1));
+/** Boss HP as a share of the best reachable crowd: rises inside a world, eases off when a new one starts. */
+export function bossDifficulty(level, { minDifficulty, maxDifficulty, kindFactor } = CONFIG.boss) {
+  const { pressure, kind } = levelInfo(level);
+  return (minDifficulty + (maxDifficulty - minDifficulty) * pressure) * kindFactor[kind];
 }
 
 // ---- Rewards & progression -----------------------------------------------------

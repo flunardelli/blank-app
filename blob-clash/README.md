@@ -23,7 +23,11 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 - **Boss:** a multidão se funde num campeão de luvas, que abre a luta com um **soco voador**.
   **TAP TO FIGHT!**: cada toque é um jab; o 5º toque seguido vira **JUMP PUNCH** (2,5× de dano).
   Multidão maior dá mais vida e soco mais forte; todo chefe derruba qualquer campeão em ~10 s, então é preciso tocar rápido.
-- **Um chefe por fase** (`src/bosses.js`, em ciclo), cada um com visual e golpe próprios:
+- **30 fases em 10 mundos de 3** (`src/worlds.js`): a fase 1 de cada mundo termina num **mini chefe** (um chefe do elenco
+  em 0,8×, na cor do mundo, só com jabs), a 2 no **chefão** do mundo e a 3 num baú de moedas (por enquanto ainda com luta).
+  Cada mundo tem um obstáculo em destaque. A pressão (tamanho da pista, multidões inimigas, vida dos chefes) sobe dentro do
+  mundo e dá um respiro quando o próximo começa; de 6 a 12 segmentos por fase.
+- **Chefes** (`src/bosses.js`), cada um com visual e golpe próprios; qual aparece em cada fase vem do mundo:
 
   | Chefe | Visual | Golpe |
   |---|---|---|

@@ -2,6 +2,7 @@
 import { CONFIG } from './config.js';
 import { createRng } from './rng.js';
 import { applyGate, bestGate, bossDifficulty } from './rules.js';
+import { levelInfo } from './worlds.js';
 
 const multiplyGate = (rng, cfg) => ({ op: 'x', value: rng.pick(cfg.multipliers) });
 const addGate = (rng, level, cfg) => ({ op: '+', value: rng.int(cfg.addMin, cfg.addMax + level) });
@@ -88,9 +89,9 @@ const OBSTACLE_MAKERS = {
 };
 
 /** Hazard weights for a level: only unlocked kinds, with this level's featured kind boosted. */
-export function hazardWeights(level, { weights, unlockLevel, featured: cycle, featuredBoost } = CONFIG.obstacle) {
+export function hazardWeights(level, { weights, unlockLevel, featuredBoost } = CONFIG.obstacle) {
   const unlocked = Object.keys(weights).filter((kind) => unlockLevel[kind] <= level);
-  const featured = cycle[(level - 1) % cycle.length];
+  const { featured } = levelInfo(level).world;
   return Object.fromEntries(unlocked.map((kind) => [kind, weights[kind] * (kind === featured ? featuredBoost : 1)]));
 }
 
@@ -101,10 +102,10 @@ function makeObstacles(rng, d, weights, cfg) {
 }
 
 // A small group of gray walkers pacing side to side, each on its own row and rhythm.
-function makeWalkers(rng, d, level, cfg) {
+function makeWalkers(rng, d, level, pressure, cfg) {
   const w = cfg.walkers;
   const half = cfg.track.width / 2;
-  const most = Math.min(w.perGroupMax, 1 + Math.floor((level - 1) / 2));
+  const most = Math.min(w.perGroupMax, 1 + Math.floor(pressure * w.perGroupMax * 1.5));
   return Array.from({ length: rng.int(w.perGroupMin, most) }, (_, i) => {
     const brute = level >= w.bruteFromLevel && rng.chance(w.bruteChance);
     const radius = w.radius * (brute ? w.bruteScale : 1);
@@ -123,7 +124,8 @@ function makeCoinRow(rng, d, cfg) {
 export function generateLevel(level, cfg = CONFIG) {
   const rng = createRng(level * 7919 + 13);
   const { track } = cfg;
-  const segments = 5 + Math.min(level, 5);
+  const { pressure, kind, world } = levelInfo(level);
+  const segments = track.minSegments + Math.round((track.maxSegments - track.minSegments) * pressure);
   const gates = [];
   const obstacles = [];
   const coins = [];
@@ -143,12 +145,13 @@ export function generateLevel(level, cfg = CONFIG) {
     obstacles.push(...makeObstacles(rng, d + 16, weights, cfg));
 
     if (s % 2 === 1) {
-      const share = cfg.enemy.minShare + rng.next() * (cfg.enemy.maxShare - cfg.enemy.minShare);
+      const rise = cfg.enemy.pressureShare * pressure;
+      const share = cfg.enemy.minShare + rise + rng.next() * (cfg.enemy.maxShare - cfg.enemy.minShare);
       const count = Math.max(2, Math.round(bestCount * share));
       enemies.push({ d: d + 29, count });
       bestCount -= count;
     } else if (s > 0 && level >= cfg.walkers.fromLevel) {
-      walkers.push(...makeWalkers(rng, d + 28, level, cfg)); // dodgeable: perfect play loses nothing
+      walkers.push(...makeWalkers(rng, d + 28, level, pressure, cfg)); // dodgeable: perfect play loses nothing
     }
   }
 
@@ -159,6 +162,8 @@ export function generateLevel(level, cfg = CONFIG) {
   const bossD = finishD + cfg.boss.ringDepth / 2 + 1;
   return {
     level,
+    world: world.id,
+    kind, // 'mini' | 'boss' | 'chest' (see worlds.js)
     gates,
     obstacles,
     coins: coins.map((c, id) => ({ ...c, id })),
