@@ -39,6 +39,8 @@ export const CONFIG = {
     lanes: [-3.3, 0, 3.3],
     segmentLength: 38,
     introLength: 16,
+    minSegments: 6, // the first level; the last one has maxSegments (see levelInfo for the curve)
+    maxSegments: 12,
   },
   crowd: {
     spacing: 0.55,
@@ -59,8 +61,9 @@ export const CONFIG = {
     maxCount: 999,
   },
   enemy: {
-    minShare: 0.15, // enemy crowd size as a share of the best reachable count
-    maxShare: 0.32,
+    minShare: 0.12, // enemy crowd size as a share of the best reachable count, on the first level
+    maxShare: 0.26,
+    pressureShare: 0.18, // added to both shares at full campaign pressure
     maxVisible: 60,
   },
   skirmish: { minRatePerSecond: 8, rateFraction: 1.2 },
@@ -74,11 +77,10 @@ export const CONFIG = {
     trapHalfDepth: 1.4,
     trapButtonLead: 9,
     trapButtonRadius: 0.9,
-    // Hazard pool: each kind unlocks at a level, and every level features one kind (weight × featuredBoost)
-    // taken in turn from `featured`, so consecutive phases feel different.
+    // Hazard pool: each kind unlocks at a level, and every level features its world's kind
+    // (weight × featuredBoost), so neighbouring worlds feel different.
     weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35 },
     unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3 },
-    featured: ['slider', 'saw', 'bombs', 'jump', 'trap', 'spikes'],
     featuredBoost: 3,
     spikeHalfDepth: 1.1,
     // Spike pads hug the track edges (like the reference): [centre x, half width] per pad.
@@ -121,9 +123,14 @@ export const CONFIG = {
   coins: { perRow: 5, spacing: 1.6, value: 10 },
   hud: { bubbleRange: 42 }, // only label crowds this close, so the horizon stays clean
   boss: {
-    baseDifficulty: 0.4, // boss HP as a share of the best reachable crowd
-    difficultyPerLevel: 0.04,
-    maxDifficulty: 0.9,
+    // Boss HP as a share of the best reachable crowd, from the first level (minDifficulty) to the last
+    // (maxDifficulty) along the campaign's pressure curve; kindFactor scales it per level kind.
+    // Required taps/s = 3 × difficulty, so the cap stays well under a human's tapping speed.
+    minDifficulty: 0.3,
+    maxDifficulty: 1.4,
+    kindFactor: { mini: 0.8, boss: 1, chest: 1 },
+    miniScale: 0.8, // mini bosses are a smaller roster boss in the world's colour
+    miniAttack: { interval: 1.4, move: 'jab' }, // and only throw simple jabs
     finishGap: 4, // straight run between the last segment and the finish line
     ringDepth: 11,
   },
