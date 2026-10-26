@@ -145,7 +145,7 @@ export const CONFIG = {
     openingMultiplier: 2.5, // the fight opens with a free flying punch
   },
   bonus: { maxMultiplier: 5, step: 0.2, tileDepth: 2.6 },
-  campaign: { levels: 30, starsAt: [2, 4] }, // x1–x2 = 1 star, up to x4 = 2, above = 3
+  campaign: { starsAt: [2, 4] }, // x1–x2 = 1 star, up to x4 = 2, above = 3; level count lives in worlds.js
   // Dev-only shortcuts: each entry is a key sequence that jumps straight to the boss fight.
   dev: {
     skipCrowdShare: 0.7, // crowd handed to the player: at least this share of the level's best count

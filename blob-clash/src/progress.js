@@ -1,5 +1,6 @@
 // Pure save-data rules (no storage, no three.js) so they can be unit tested.
 import { CONFIG } from './config.js';
+import { LEVEL_COUNT } from './worlds.js';
 
 export const SAVE_VERSION = 3;
 
@@ -24,7 +25,7 @@ const clampLevel = (n, levels) => Math.min(levels, Math.max(1, Math.floor(Number
 const count = (n) => Math.max(0, Math.floor(Number(n)) || 0);
 
 // Returns a new save; stars and best multiplier never go down, and only the next level unlocks.
-export function completeLevel(save, level, multiplier, levels = CONFIG.campaign.levels) {
+export function completeLevel(save, level, multiplier, levels = LEVEL_COUNT) {
   const before = save.completed[level];
   const completed = {
     ...save.completed,
@@ -38,7 +39,7 @@ export function completeLevel(save, level, multiplier, levels = CONFIG.campaign.
 }
 
 // v2 only knew the level the player was on: everything before it counts as done with one star.
-export function migrateV2(v2, levels = CONFIG.campaign.levels) {
+export function migrateV2(v2, levels = LEVEL_COUNT) {
   const base = defaultSave();
   const level = clampLevel(v2?.level, levels);
   const completed = {};
@@ -54,7 +55,7 @@ export function migrateV2(v2, levels = CONFIG.campaign.levels) {
 }
 
 // Anything that doesn't look like a v3 save falls back field by field to the defaults.
-export function normalizeSave(raw, levels = CONFIG.campaign.levels) {
+export function normalizeSave(raw, levels = LEVEL_COUNT) {
   const base = defaultSave();
   if (!raw || typeof raw !== 'object' || raw.version !== SAVE_VERSION) return base;
   const completed = {};
