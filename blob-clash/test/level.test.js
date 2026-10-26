@@ -2,7 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateLevel, hazardWeights } from '../src/level.js';
 import { CONFIG } from '../src/config.js';
-import { isGoodGate, requiredTapRate } from '../src/rules.js';
+import { bossDifficulty, isGoodGate, requiredTapRate } from '../src/rules.js';
+import { WORLDS } from '../src/worlds.js';
+
+const HUMAN_TAPS_PER_SECOND = 6;
 
 test('levels are deterministic for the same number', () => {
   assert.deepEqual(generateLevel(3), generateLevel(3));
@@ -76,25 +79,72 @@ test('bomb rows alternate sides and leave room for the biggest crowd', () => {
   }
 });
 
-test('phases unlock new hazards and each one features a different kind', () => {
+test('hazards unlock gradually and every world features its own kind', () => {
   assert.deepEqual(Object.keys(hazardWeights(1)).sort(), ['slider', 'spikes', 'trap']);
   assert.ok('saw' in hazardWeights(2) && !('bombs' in hazardWeights(2)));
   assert.ok('bombs' in hazardWeights(3));
   const featured = (level) => Object.entries(hazardWeights(level)).sort((a, b) => b[1] - a[1])[0][0];
-  for (let n = 1; n < 12; n++) assert.notEqual(featured(n), featured(n + 1));
-  assert.equal(featured(2), 'saw', 'a newly unlocked hazard is the star of its phase');
-  assert.equal(generateLevel(1).walkers.length, 0, 'phase 1 has no walkers yet');
+  WORLDS.forEach((world, i) => {
+    for (let slot = 1; slot <= 3; slot++) {
+      const level = i * 3 + slot;
+      if (CONFIG.obstacle.unlockLevel[world.featured] <= level) assert.equal(featured(level), world.featured, `level ${level}`);
+    }
+    if (i > 0) assert.notEqual(world.featured, WORLDS[i - 1].featured, 'neighbouring worlds differ');
+  });
+  assert.equal(generateLevel(1).walkers.length, 0, 'level 1 has no walkers yet');
   assert.ok(generateLevel(2).walkers.length > 0);
   assert.ok([4, 5, 6, 7, 8].some((n) => generateLevel(n).walkers.some((w) => w.strength > 1)), 'brutes show up later');
 });
 
-test('with the best crowd the boss needs a humane tapping speed, and gets harder', () => {
-  const rates = [1, 5, 10, 20].map((n) => {
+test('levels are longer and the enemy crowds bigger as the campaign goes on', () => {
+  const { minSegments, maxSegments } = CONFIG.track;
+  assert.equal(generateLevel(1).gates.length, minSegments);
+  assert.equal(generateLevel(30).gates.length, maxSegments);
+  const segments = Array.from({ length: 30 }, (_, i) => generateLevel(i + 1).gates.length);
+  assert.ok(segments.every((n, i) => i === 0 || n >= segments[i - 1] - 1), 'segments only dip by one at most');
+  // Enemy crowds as a share of the best crowd, averaged over a world's three levels.
+  const share = (world) => {
+    const levels = [1, 2, 3].map((slot) => generateLevel(world * 3 + slot));
+    return levels.flatMap((l) => l.enemies.map((e) => e.count / l.bestCount)).reduce((a, b) => a + b) / 15;
+  };
+  assert.ok(share(9) > share(0), 'the last world fights bigger crowds than the first');
+});
+
+test('each level knows its world and kind: mini boss, world boss, chest', () => {
+  for (let n = 1; n <= 30; n++) {
+    const level = generateLevel(n);
+    assert.equal(level.kind, ['mini', 'boss', 'chest'][(n - 1) % 3]);
+    assert.equal(level.world, WORLDS[Math.floor((n - 1) / 3)].id);
+  }
+});
+
+test('levels 28–30 are not a copy of levels 4–6', () => {
+  for (let i = 0; i < 3; i++) {
+    const early = generateLevel(4 + i);
+    const late = generateLevel(28 + i);
+    assert.notEqual(early.world, late.world);
+    assert.ok(late.gates.length > early.gates.length, 'longer');
+    assert.ok(bossDifficulty(28 + i) > bossDifficulty(4 + i), 'stronger boss');
+  }
+});
+
+test('with the best crowd the boss needs a humane tapping speed on every level', () => {
+  for (let n = 1; n <= 30; n++) {
     const { boss, bestCount } = generateLevel(n);
     const rate = requiredTapRate(bestCount, boss.hp, 1);
-    assert.ok(rate <= 6, `level ${n}: needs ${rate.toFixed(1)} taps/s`);
-    return rate;
-  });
-  assert.ok(rates[0] < rates[3]);
-  assert.ok(rates[0] <= 3, 'level 1 is gentle');
+    assert.ok(rate <= HUMAN_TAPS_PER_SECOND, `level ${n}: needs ${rate.toFixed(1)} taps/s`);
+  }
+  const first = generateLevel(1);
+  assert.ok(requiredTapRate(first.bestCount, first.boss.hp, 1) <= 1.5, 'level 1 is gentle');
+});
+
+test('boss strength rises through each world and eases off when the next one starts', () => {
+  // Boss HP follows the best crowd, which depends on the gate rolls, so compare the HP share of that crowd.
+  const strength = (n) => bossDifficulty(n);
+  for (let w = 0; w < 10; w++) {
+    const [a, b, c] = [1, 2, 3].map((slot) => strength(w * 3 + slot));
+    assert.ok(a < b && b <= c, `world ${w + 1}: ${a} ${b} ${c}`);
+    if (w > 0) assert.ok(a < strength(w * 3), `world ${w + 1} starts with a breather`);
+  }
+  for (let w = 1; w < 10; w++) assert.ok(strength(w * 3 + 2) > strength((w - 1) * 3 + 2), 'each world boss beats the previous one');
 });

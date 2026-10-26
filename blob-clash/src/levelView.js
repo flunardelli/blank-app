@@ -9,16 +9,17 @@ import {
 import { createBoss, createChampion } from './art/boxer.js';
 import { createBomb, createRamp, createSaw, createSawRail } from './art/hazards.js';
 import { bossForLevel } from './bosses.js';
+import { makeJelly, withJellyPhases } from './art/jelly.js';
 import { Crowd } from './crowd.js';
 
 export const toZ = (d) => -d;
 
 // Geometries/materials shared by every level.
 const shared = {
-  playerGeometry: humanoidGeometry(PALETTE.player),
-  enemyGeometry: humanoidGeometry(PALETTE.enemy),
-  playerMaterial: gummyMaterial({ emissive: 0x3a0c00 }),
-  enemyMaterial: gummyMaterial({ opacity: 0.82, emissive: 0x200006 }),
+  playerGeometry: withJellyPhases(humanoidGeometry(PALETTE.player), CONFIG.crowd.maxVisible),
+  enemyGeometry: withJellyPhases(humanoidGeometry(PALETTE.enemy), CONFIG.enemy.maxVisible),
+  playerMaterial: makeJelly(gummyMaterial({ emissive: 0x3a0c00 })),
+  enemyMaterial: makeJelly(gummyMaterial({ opacity: 0.82, emissive: 0x200006 }), { angry: true }),
   walkerGeometry: humanoidGeometry(PALETTE.walker),
   walkerMaterial: gummyMaterial({ opacity: 0.85, emissive: 0x101018 }),
 };

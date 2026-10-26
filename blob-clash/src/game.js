@@ -13,6 +13,8 @@ import {
   clashRate, clashStep, comboStep, crossesObstacle, jumpLift, onRamp, pressesButton, rewardCoins, sliderX,
   startBlobsFor, sweepX, upgradeCost,
 } from './rules.js';
+import { createSequences } from './cheat.js';
+import { completeLevel } from './progress.js';
 import { loadSave, writeSave } from './save.js';
 
 const UPGRADES = [
@@ -42,7 +44,11 @@ export class Game {
       if (this.state === 'menu') this.start();
       else if (this.state === 'boxing') this.championPunch();
     });
-    this.loadLevel(this.save.level);
+    const cheats = createSequences(CONFIG.dev.cheats, { timeout: CONFIG.dev.cheatTimeout });
+    input.onKey((code) => {
+      if (cheats.feed(code, performance.now() / 1000) !== null) this.skipToBoss();
+    });
+    this.loadLevel(this.save.current);
   }
 
   // ---- Level lifecycle ----------------------------------------------------------
@@ -111,6 +117,20 @@ export class Game {
     this.state = 'running';
     this.player.mood = 'run';
     this.hud.hideScreens();
+  }
+
+  // Dev cheat: jump to the boss fight from the menu or the run, with a crowd that can win it.
+  skipToBoss() {
+    if (this.state === 'menu') this.start();
+    if (this.state !== 'running') return;
+    const { player, level } = this;
+    this.nextGate = this.view.gates.length;
+    this.nextEnemy = this.view.enemies.length;
+    player.setCount(Math.max(player.count, Math.ceil(level.bestCount * CONFIG.dev.skipCrowdShare)));
+    player.center.d = level.finishD - 1;
+    player.units.forEach((u) => { u.d = u.prevD = player.center.d; u.x = player.center.x; delete u.jump; u.lift = 0; });
+    this.hud.showBanner('DEV');
+    this.startMerge();
   }
 
   // ---- Frame update -------------------------------------------------------------
@@ -537,13 +557,13 @@ export class Game {
       this.save.keys = 0;
     }
     this.save.coins += reward + chest;
-    this.save.level = this.level.level + 1;
+    this.save = completeLevel(this.save, this.level.level, this.multiplier);
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
     this.hud.setKeys(this.save.keys);
     this.hud.showComplete({
       level: this.level.level, coins: reward, multiplier: this.multiplier, chest,
-      onNext: () => this.loadLevel(this.save.level),
+      onNext: () => this.loadLevel(this.save.current),
     });
   }
 

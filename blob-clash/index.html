@@ -27,6 +27,7 @@
       <div id="progress"><div id="progress-fill"></div></div>
       <div class="flag"></div>
     </div>
+    <button id="pause-btn" aria-label="Pause" hidden><i></i><i></i></button>
     <div id="coins"><span id="coins-value" class="ink">0</span><i class="coin-icon big"></i></div>
   </header>
 
@@ -69,6 +70,11 @@
     <h1 class="stacked"><span class="ink">You</span><span class="ink big orange">LOSE!</span></h1>
     <div class="reward"><span id="lose-coins" class="ink">+0</span><i class="coin-icon huge"></i></div>
     <button id="lose-continue" class="btn cyan ink">CONTINUE</button>
+  </section>
+
+  <section id="pause" class="screen dim" hidden>
+    <h1 class="stacked"><span class="ink big">PAUSED</span></h1>
+    <button id="pause-resume" class="btn cyan ink">CONTINUE</button>
   </section>
 
   <script type="module" src="src/main.js"></script>

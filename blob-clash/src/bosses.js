@@ -1,3 +1,6 @@
+import { CONFIG } from './config.js';
+import { levelInfo } from './worlds.js';
+
 // Boss roster: one entry per level, cycling. Pure data, so adding a boss is adding a row.
 //
 // Attack fields (all bosses stay equally dangerous on average: see bossPunchDamage):
@@ -32,4 +35,23 @@ export const BOSSES = [
   },
 ];
 
-export const bossForLevel = (level) => BOSSES[(level - 1) % BOSSES.length];
+const bossById = (id) => BOSSES.find((b) => b.id === id);
+
+/**
+ * The opponent of a level, read from its world: a mini boss on level 1 (smaller, in the world's colour,
+ * simple jabs), the world boss on level 2. Level 3 is a chest stage and has no boss of its own; until
+ * that stage exists it plays the world boss too.
+ */
+export function bossForLevel(level) {
+  const { world, kind } = levelInfo(level);
+  if (kind !== 'mini') return bossById(world.boss);
+  const { miniScale, miniAttack } = CONFIG.boss;
+  const base = bossById(world.mini);
+  return {
+    ...base,
+    name: `MINI ${base.name}`,
+    colors: world.tint,
+    body: base.body.map((s) => s * miniScale),
+    attack: miniAttack,
+  };
+}

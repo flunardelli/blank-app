@@ -1,5 +1,6 @@
 // Pure gameplay rules: no three.js, no DOM. Everything here is unit-tested.
 import { CONFIG } from './config.js';
+import { levelInfo } from './worlds.js';
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -24,6 +25,9 @@ export const bestGate = (count, pair) =>
 // ---- Crowd formation ---------------------------------------------------------
 // Sunflower (phyllotaxis) packing: round, dense and stable as the crowd grows.
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+// Wobble phase of the i-th body: the golden angle keeps neighbours (and re-indexed survivors) out of step.
+export const jellyPhase = (index) => (index * GOLDEN_ANGLE) % (Math.PI * 2);
 
 export function formationSlot(index, spacing) {
   const r = spacing * Math.sqrt(index);
@@ -136,8 +140,10 @@ export function requiredTapRate(count, bossHp, damageLevel, cfg = CONFIG.boxing)
   return bossHp / (punch * cfg.bossKillSeconds);
 }
 
-export function bossDifficulty(level, { baseDifficulty, difficultyPerLevel, maxDifficulty } = CONFIG.boss) {
-  return Math.min(maxDifficulty, baseDifficulty + difficultyPerLevel * (level - 1));
+/** Boss HP as a share of the best reachable crowd: rises inside a world, eases off when a new one starts. */
+export function bossDifficulty(level, { minDifficulty, maxDifficulty, kindFactor } = CONFIG.boss) {
+  const { pressure, kind } = levelInfo(level);
+  return (minDifficulty + (maxDifficulty - minDifficulty) * pressure) * kindFactor[kind];
 }
 
 // ---- Rewards & progression -----------------------------------------------------

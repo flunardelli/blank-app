@@ -135,3 +135,11 @@ h1.stacked .big { font-size: 1.2em; }
 #confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 #confetti i { position: absolute; top: -20px; width: 10px; height: 22px; border-radius: 5px; animation: fall linear forwards; }
 @keyframes fall { to { transform: translateY(110vh) rotate(var(--spin)); } }
+
+/* ---- Pause ---- */
+#pause-btn { position: absolute; left: 50%; top: max(14px, env(safe-area-inset-top)); transform: translateX(-50%); pointer-events: auto;
+  width: 44px; height: 44px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+  border: 4px solid var(--ink); border-radius: 50%; background: linear-gradient(#3fe0ff, #10b7f2); box-shadow: 0 4px 0 var(--ink); }
+#pause-btn i { width: 6px; height: 18px; border-radius: 2px; background: #fff; border: 2px solid var(--ink); box-sizing: content-box; }
+#pause-btn:active { transform: translateX(-50%) translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+#pause { z-index: 7; }
