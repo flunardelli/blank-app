@@ -8,13 +8,17 @@ import {
 } from './art/models.js';
 import { createBoss, createChampion } from './art/boxer.js';
 import { createChest } from './art/chest.js';
-import { createAxe, createBomb, createPusher, createRamp, createSaw, createSawRail, createSpikedPillar } from './art/hazards.js';
+import {
+  createAxe, createBall, createBallLane, createBomb, createPusher, createRamp, createRipple, createSaw, createSawRail,
+  createSpikedPillar,
+} from './art/hazards.js';
 import { bossForLevel } from './bosses.js';
 import { makeJelly, withJellyPhases } from './art/jelly.js';
 import { Crowd } from './crowd.js';
-import { axeAngle, pusherBox, sliderX, sweepX } from './rules.js';
+import { axeAngle, ballState, pusherBox, sliderX, sweepX } from './rules.js';
 
 export const toZ = (d) => -d;
+const WATER_Y = -1.6; // keep in step with the sea in world.js
 
 // Geometries/materials shared by every level.
 const shared = {
@@ -131,6 +135,35 @@ export function buildLevelView(scene, level, theme) {
         group.add(pillar);
       });
       return { obstacle, object: place(group, obstacle.d) };
+    }
+    if (obstacle.kind === 'ball') {
+      const { radius, span } = obstacle;
+      const ball = createBall(radius);
+      const lane = createBallLane(radius * 2 + 0.6, span * 2 + radius * 2);
+      lane.position.x = obstacle.x;
+      const ripple = createRipple();
+      const group = new THREE.Group();
+      group.add(lane, ball.group, ripple);
+      return {
+        obstacle,
+        object: place(group, obstacle.d),
+        update(time) {
+          const s = ballState(obstacle, time);
+          ball.group.visible = s.phase !== 'wait';
+          ball.group.position.set(s.x, s.y, -(s.d - obstacle.d));
+          ball.roller.rotation.x = -s.d / radius; // rolling towards the camera
+          // The strip blinks as a warning, stays dim while the ball runs, and is gone once it falls.
+          lane.material.opacity = s.warn ? 0.2 + 0.2 * Math.abs(Math.sin(time * 10)) : s.phase === 'roll' ? 0.22 : 0;
+          const splash = s.phase === 'fall' && s.y < WATER_Y + radius;
+          ripple.visible = splash;
+          if (splash) {
+            const k = (WATER_Y + radius - s.y) / (radius + 6); // grows while it sinks
+            ripple.position.set(s.x, WATER_Y + 0.02, -(s.d - obstacle.d));
+            ripple.scale.setScalar(1 + k * 3);
+            ripple.material.opacity = Math.max(0, 0.7 - k);
+          }
+        },
+      };
     }
     if (obstacle.kind === 'ramp') {
       return { obstacle, object: place(createRamp(obstacle.halfWidth, obstacle.halfDepth), obstacle.d, obstacle.x) };

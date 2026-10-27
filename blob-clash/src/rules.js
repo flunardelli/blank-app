@@ -82,6 +82,32 @@ export const axeBladeHeight = (axe, time) => axe.pivotHeight - axe.length * Math
 /** The blade cuts only while it hangs low: out at the ends of the swing it is above everyone's head. */
 export const axeIsLow = (axe, time) => axeBladeHeight(axe, time) < axe.clearance;
 
+// Rolling ball: every `period` seconds it rolls from d + span to d - span (towards the player), then
+// veers off the nearest edge and drops into the water, then waits. `offset` shifts the cycle in time.
+export const ballRollTime = ({ span, speed }) => (2 * span) / speed;
+export const ballPeriod = (ball) => ballRollTime(ball) + ball.fallTime + ball.waitTime;
+
+/** Where the ball is: phase 'roll' | 'fall' | 'wait', progress t in 0..1 of the phase, and warn while a roll is imminent. */
+export function ballState(ball, time) {
+  const period = ballPeriod(ball);
+  const local = (((time + ball.offset) % period) + period) % period;
+  const roll = ballRollTime(ball);
+  const rest = { x: ball.x, d: ball.d - ball.span, y: ball.radius };
+  if (local < roll) return { phase: 'roll', t: local / roll, warn: false, x: ball.x, d: ball.d + ball.span - ball.speed * local, y: ball.radius };
+  if (local < roll + ball.fallTime) {
+    const t = (local - roll) / ball.fallTime;
+    // Momentum carries it on while it slides sideways over the edge and falls under gravity.
+    return { phase: 'fall', t, warn: false, x: ball.x + ball.side * t * ball.fallReach, d: rest.d - ball.speed * (local - roll) * 0.5, y: ball.radius - t * t * ball.fallDepth };
+  }
+  return { phase: 'wait', t: 0, warn: local >= period - ball.warnTime, ...rest };
+}
+
+/** The ball only crushes while it rolls on the track; it is a moving circle, so there is no line to cross. */
+export function ballHits(ball, time, x, d, r) {
+  const state = ballState(ball, time);
+  return state.phase === 'roll' && circlesOverlap(x, d, r, state.x, state.d, ball.radius);
+}
+
 /** Height of a blob `distance` units after leaving a jump ramp; 0 once it has landed. */
 export function jumpLift(distance, length, height = CONFIG.obstacle.jumpHeight) {
   if (distance < 0 || distance > length) return 0;
@@ -99,6 +125,7 @@ export function blastVictims(bomb, bodies) {
 
 /** True when a body moving from prevD to d crosses the obstacle line while overlapping it sideways. */
 export function crossesObstacle(obstacle, time, x, prevD, d, r) {
+  if (obstacle.kind === 'ball') return false; // moves: the game tests it every frame (ballHits)
   return prevD < obstacle.d && d >= obstacle.d && obstacleHits(obstacle, time, x, obstacle.d, r);
 }
 
@@ -115,6 +142,7 @@ export function obstacleHits(obstacle, time, x, d, r) {
       && circleHitsBox(x, d, r, { x: axeBladeX(obstacle, time), d: obstacle.d, halfWidth: obstacle.halfWidth, halfDepth: obstacle.halfDepth });
   }
   if (obstacle.kind === 'pusher') return circleHitsBox(x, d, r, pusherBox(obstacle, time));
+  if (obstacle.kind === 'ball') return ballHits(obstacle, time, x, d, r);
   if (!obstacle.pads) return false; // ramps and bombs are handled by the game loop
   return obstacle.pads.some((pad) => circleHitsBox(x, d, r, { ...pad, d: obstacle.d }));
 }
