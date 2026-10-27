@@ -62,7 +62,7 @@ function sliderUpdater(obstacle, { object, springGlove }) {
   };
 }
 
-export function buildLevelView(scene, level) {
+export function buildLevelView(scene, level, theme) {
   const root = new THREE.Group();
   scene.add(root);
   const place = (object, d, x = 0) => {
@@ -74,7 +74,7 @@ export function buildLevelView(scene, level) {
 
   const ladder = createLadder();
   const trackEnd = level.ladderStart + ladder.length + 6;
-  root.add(createTrack(-12, trackEnd));
+  root.add(createTrack(-12, trackEnd, theme));
 
   const gates = level.gates.map((pair) => {
     const gate = createGate(pair);
