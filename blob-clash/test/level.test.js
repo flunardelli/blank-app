@@ -197,3 +197,38 @@ test('boss strength rises through each world and eases off when the next one sta
   }
   for (let w = 1; w < 10; w++) assert.ok(strength(w * 3 + 2) > strength((w - 1) * 3 + 2), 'each world boss beats the previous one');
 });
+
+test('bestCount includes the recruits: a one-segment level gains exactly their number', () => {
+  const oneSegment = { ...CONFIG, track: { ...CONFIG.track, minSegments: 1, maxSegments: 1 } };
+  for (const n of [1, 5, 12, 30]) {
+    const plain = generateLevel(n, { ...oneSegment, recruits: { ...CONFIG.recruits, chance: 0 } });
+    const level = generateLevel(n, { ...oneSegment, recruits: { ...CONFIG.recruits, chance: 1 } });
+    assert.ok(level.recruits.length > 0);
+    assert.equal(level.bestCount, plain.bestCount + level.recruits.length, `level ${n}`);
+  }
+});
+
+test('sleeping recruits: groups of 1-5 inside the track, without reshuffling the level', () => {
+  const { perGroupMin, perGroupMax } = CONFIG.recruits;
+  const half = CONFIG.track.width / 2;
+  const sizes = new Set();
+  const without = { ...CONFIG, recruits: { ...CONFIG.recruits, chance: 0 } };
+  for (let n = 1; n <= 30; n++) {
+    const level = generateLevel(n);
+    const plain = generateLevel(n, without);
+    assert.deepEqual(plain.gates, level.gates, `level ${n}: recruits must not reshuffle the gates`);
+    assert.equal(plain.recruits.length, 0);
+    assert.ok(level.recruits.length > 0, `level ${n}: no recruits`);
+    assert.ok(level.recruits.every((r) => Math.abs(r.x) + r.radius < half && r.d > 0 && r.d < level.finishD));
+    // Groups are told apart by their distance to the previous recruit.
+    const groups = level.recruits.reduce((acc, r) => {
+      const last = acc.at(-1);
+      if (last && r.d - last.at(-1).d < CONFIG.recruits.slotSpacing * 2 && Math.abs(r.x - last.at(-1).x) < CONFIG.recruits.slotSpacing * 2.1) last.push(r);
+      else acc.push([r]);
+      return acc;
+    }, []);
+    groups.forEach((g) => sizes.add(g.length));
+    assert.ok(groups.every((g) => g.length >= perGroupMin && g.length <= perGroupMax));
+  }
+  assert.ok(sizes.has(1) && sizes.has(perGroupMax), `group sizes seen: ${[...sizes]}`);
+});

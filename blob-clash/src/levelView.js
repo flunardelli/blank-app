@@ -167,6 +167,25 @@ export function buildLevelView(scene, level) {
     return { walker, mesh: place(mesh, walker.d), alive: true };
   });
 
+  const recruits = level.recruits.map((recruit) => {
+    const mesh = new THREE.Mesh(shared.walkerGeometry, shared.walkerMaterial);
+    mesh.castShadow = true;
+    mesh.scale.setScalar(recruit.radius / CONFIG.walkers.radius);
+    mesh.rotation.y = Math.PI; // facing the runners
+    place(mesh, recruit.d, recruit.x);
+    const size = mesh.scale.x;
+    const phase = recruit.id * 1.7;
+    // Asleep: a slow breath and a slight slump.
+    return {
+      recruit, mesh, alive: true,
+      update(time) {
+        const breath = Math.sin(time * 2 + phase);
+        mesh.scale.set(size * (1 - breath * 0.02), size * (1 + breath * 0.04), size * (1 - breath * 0.02));
+        mesh.rotation.x = 0.12;
+      },
+    };
+  });
+
   const key = place(createKey(), level.key.d, level.key.x);
   key.position.y = 1.2;
 
@@ -184,12 +203,13 @@ export function buildLevelView(scene, level) {
     coins,
     enemies,
     walkers,
+    recruits,
     key,
     boss,
     ladder,
     /** Animates every moving hazard; a new hazard only needs an `update(time, dt)` on its entry. */
     update(time, dt) {
-      obstacles.forEach((entry) => entry.update?.(time, dt));
+      [...obstacles, ...recruits].forEach((entry) => entry.update?.(time, dt));
     },
     dispose() {
       enemies.forEach(({ crowd }) => crowd.mesh.dispose());

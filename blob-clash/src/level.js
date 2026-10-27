@@ -135,6 +135,16 @@ function makeWalkers(rng, d, level, pressure, cfg) {
   });
 }
 
+// A few sleeping blobs huddled in one lane (two rows of three at most): steer into the lane to wake them.
+function makeRecruits(rng, d, pressure, cfg) {
+  const r = cfg.recruits;
+  const most = Math.min(r.perGroupMax, 1 + Math.floor(pressure * r.perGroupMax * 1.5));
+  const laneX = rng.pick(cfg.track.lanes);
+  return Array.from({ length: rng.int(r.perGroupMin, most) }, (_, i) => ({
+    x: laneX + ((i % 3) - 1) * r.slotSpacing, d: d + Math.floor(i / 3) * r.slotSpacing, radius: r.radius,
+  }));
+}
+
 function makeCoinRow(rng, d, cfg) {
   const x = rng.pick(cfg.track.lanes);
   return Array.from({ length: cfg.coins.perRow }, (_, i) => ({ x, d: d + i * cfg.coins.spacing }));
@@ -152,6 +162,9 @@ export function generateLevel(level, cfg = CONFIG) {
   const coins = [];
   const enemies = [];
   const walkers = [];
+  const recruits = [];
+  // Own stream, so adding recruits never reshuffles the rest of a level.
+  const recruitRng = createRng(level * 104729 + 5);
   const weights = hazardWeights(level, cfg.obstacle);
   // Best reachable crowd with a fresh (non-upgraded) start and perfect gate choices.
   let bestCount = 1;
@@ -168,6 +181,12 @@ export function generateLevel(level, cfg = CONFIG) {
 
     coins.push(...makeCoinRow(rng, d + 6, cfg));
     obstacles.push(...makeObstacles(rng, d + 16, weights, cfg));
+
+    if (recruitRng.chance(cfg.recruits.chance)) {
+      const group = makeRecruits(recruitRng, d + cfg.recruits.offsetD, pressure, cfg);
+      recruits.push(...group);
+      bestCount += group.length; // every sleeper is reachable by steering, so perfect play wakes them all
+    }
 
     if (s % 2 === 1) {
       const rise = cfg.enemy.pressureShare * pressure;
@@ -195,6 +214,7 @@ export function generateLevel(level, cfg = CONFIG) {
     key,
     enemies: enemies.map((e, id) => ({ ...e, id })),
     walkers: walkers.map((w, id) => ({ ...w, id })),
+    recruits: recruits.map((r, id) => ({ ...r, id })),
     finishD,
     boss: { d: bossD, hp: Math.max(5, Math.round(bestCount * bossDifficulty(level, cfg.boss))) },
     ladderStart: finishD + cfg.boss.ringDepth + 1,

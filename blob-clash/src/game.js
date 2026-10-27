@@ -211,6 +211,7 @@ export class Game {
     this.checkObstacles();
     this.checkBombs();
     this.checkWalkers();
+    this.checkRecruits();
     this.checkEnemies();
 
     if (player.count <= 0) this.lose();
@@ -380,6 +381,25 @@ export class Game {
         .map(({ i }) => i);
       this.killUnits(nearest, { shake: 0.25 * walker.strength });
       return; // indices are stale after a kill
+    }
+  }
+
+  // Touching a sleeping blob wakes it: it pops into the player's colour and joins the crowd.
+  checkRecruits() {
+    const { unitRadius } = CONFIG.crowd;
+    const { player } = this;
+    for (const view of this.view.recruits) {
+      const { recruit } = view;
+      if (!view.alive || Math.abs(recruit.d - player.center.d) > player.radius + recruit.radius + 1) continue;
+      if (!player.units.some((u) => circlesOverlap(u.x, u.d, unitRadius, recruit.x, recruit.d, recruit.radius))) continue;
+      view.alive = false;
+      view.mesh.visible = false;
+      const at = new THREE.Vector3(recruit.x, 0.8, toZ(recruit.d));
+      this.effects.pop(recruit.x, toZ(recruit.d), PALETTE.player.bits, { size: 1.2 });
+      this.effects.burst(at, PALETTE.player.bits, { count: 8, speed: 5, size: 0.16 });
+      player.setCount(player.count + 1);
+      const joined = player.units.at(-1); // the new body starts where the sleeper stood
+      if (joined && joined.grow === 0) Object.assign(joined, { x: recruit.x, d: recruit.d, prevD: recruit.d });
     }
   }
 
