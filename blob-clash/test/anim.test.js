@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Animator, EASE, clipDuration, mirrorPose, sampleClip } from '../src/anim.js';
-import { BOSS_MOVES, CHAMPION_MOVES, GUARD, REACTIONS } from '../src/moves.js';
+import { BOOGIE, BOSS_MOVES, CHAMPION_MOVES, DANCES, GUARD, REACTIONS, danceFor } from '../src/moves.js';
 import { BOSSES } from '../src/bosses.js';
 
 const base = { a: 0, b: 10 };
@@ -47,7 +47,7 @@ test('replaying a reaction restarts it instead of stacking', () => {
 });
 
 test('every fight clip is well formed: rising key times, known channels, hits inside the clip', () => {
-  const clips = { ...BOSS_MOVES, ...CHAMPION_MOVES, jabL: CHAMPION_MOVES.jab[0], jabR: CHAMPION_MOVES.jab[1], ...REACTIONS };
+  const clips = { ...BOSS_MOVES, ...CHAMPION_MOVES, jabL: CHAMPION_MOVES.jab[0], jabR: CHAMPION_MOVES.jab[1], ...REACTIONS, ...Object.fromEntries(Object.entries(DANCES).map(([id, { move }]) => [`dance-${id}`, move])) };
   delete clips.jab;
   for (const [name, clip] of Object.entries(clips)) {
     clip.keys.forEach(([t, pose, ease], i) => {
@@ -64,5 +64,43 @@ test('every fight clip is well formed: rising key times, known channels, hits in
 test('a boss move finishes before its next attack starts', () => {
   for (const { id, attack } of BOSSES) {
     assert.ok(clipDuration(BOSS_MOVES[attack.move]) <= attack.interval, `${id}: ${attack.move} overlaps the next attack`);
+  }
+});
+
+test('the animator reports what running reactions add to the pose, so other players can layer them', () => {
+  const anim = new Animator(base);
+  assert.deepEqual(anim.offset, {});
+  anim.react({ keys: [[0, {}], [0.1, { b: 12 }, 'linear'], [0.2, {}, 'linear']] });
+  anim.update(0.1);
+  assert.equal(anim.offset.b, 2);
+  anim.update(0.2);
+  assert.equal(anim.offset.b ?? 0, 0, 'back to nothing as the reaction ends');
+  anim.update(0.1);
+  assert.deepEqual(anim.offset, {});
+});
+
+test('a looping clip repeats instead of ending, and stays on screen', () => {
+  const anim = new Animator(base);
+  anim.play({ keys: [[0, {}], [0.5, { a: 4 }, 'linear'], [1, {}, 'linear']] }, { loop: true });
+  let pose;
+  const peaks = [];
+  for (let i = 0; i < 300; i++) {
+    pose = anim.update(0.01);
+    if (pose.a > 3.8) peaks.push(i);
+  }
+  assert.ok(anim.busy, 'still going after three loops');
+  assert.ok(peaks.length >= 3 && peaks[peaks.length - 1] > 250, 'peaks on every loop');
+});
+
+test('every boss has a dance, and the three named ones are their own', () => {
+  for (const { id } of BOSSES) assert.ok(danceFor(id).move.keys.length > 2, id);
+  assert.equal(danceFor('viking').move, DANCES.viking.move);
+  assert.equal(danceFor('punk').move, DANCES.punk.move);
+  assert.equal(danceFor('king').clip, 'Wave');
+  assert.equal(danceFor('rookie').move, BOOGIE);
+  assert.equal(new Set([DANCES.viking.move, DANCES.punk.move, DANCES.king.move, BOOGIE]).size, 4, 'no two share a dance');
+  for (const { move } of Object.values(DANCES)) {
+    const length = move.keys[move.keys.length - 1][0];
+    assert.ok(length >= 0.8 && length <= 1.6, 'a loop is a beat or two, repeated for the 2-3 s of the dance');
   }
 });

@@ -5,6 +5,8 @@ export const PALETTE = {
   walker: { bottom: 0xe4e7f0, top: 0x8d93a6, bits: 0xb8bdcc },
   glove: 0x2f56d6,
   championGlove: 0xd8264a,
+  castleStone: 0xb8aed0,
+  castleRoof: 0x8a3ad8,
   button: 0x3ee05a,
   key: 0xffc21a,
   goodGlass: 0x6fd0ff,
@@ -181,6 +183,11 @@ export const CONFIG = {
     maxDifficulty: 1.4,
     kindFactor: { mini: 0.8, boss: 1, chest: 1 },
     miniScale: 0.8, // mini bosses are a smaller roster boss in the world's colour
+    rigScale: 2.6, // a boss rig is modelled for a champion; this is its size in the ring
+    chestY: 3.4, // where hits on a size-1 boss spark, and how much higher per extra size
+    chestHeight: 6,
+    bubbleHeight: 8, // same for the health bubble over the boss during the run
+    worldBossScale: 1.5, // and a world boss towers over the ring (the camera and the hit spots follow)
     mechanicsFromWorld: 2, // worlds before this one fight with plain punches only
     miniAttack: { interval: 1.4, move: 'jab' }, // and only throw simple jabs
     finishGap: 4, // straight run between the last segment and the finish line
@@ -241,6 +248,58 @@ export const CONFIG = {
     coinVanish: 0.2,
     gravity: 16,
     camera: { sideRadius: 18, frontRadius: 9, sideHeight: 6.5, frontHeight: 5.5, lookY: 2.4, lookLead: 1.8 },
+  },
+  // Skinned jelly fighters (art/character.js): the body is one smooth mesh sampled from a blend of
+  // capsules and ellipsoids (art/bodySdf.js), bent by bones named like the RobotExpressive skeleton.
+  character: {
+    bindSpread: 0.45, // rad: arms hang this far outwards in the bind pose so they do not melt into the chest
+    cell: 0.035, // mesh resolution, rig units (smaller = smoother but slower to build at startup)
+    blend: 0.045, // how far neighbouring parts melt into each other
+    softness: 0.05, // how wide the gelatin bend around a joint is
+    influences: 4, // bones per vertex
+    blendSeconds: 0.15, // crossfade between a keyframed pose and a retargeted clip, or two clips
+    clipFile: 'assets/anim/RobotExpressive.glb', // CC0, Quaternius (three.js examples)
+    clips: ['Idle', 'Running', 'Punch', 'Death', 'Dance', 'ThumbsUp', 'Wave', 'Jump'],
+    // Seconds into the retargeted Punch at which the fist lands; the clip is sped up or slowed down so
+    // that this frame meets the move's `hits` time.
+    clipImpact: { Punch: 0.3 },
+    // Springs that let the body lag behind its bones and wobble when they stop: [stiffness, damping] per bone.
+    wobble: {
+      Abdomen: [260, 14], Torso: [220, 12], Head: [180, 10],
+      UpperArmL: [300, 16], UpperArmR: [300, 16], LowerArmL: [300, 16], LowerArmR: [300, 16],
+    },
+    wobbleMaxStep: 1 / 40, // seconds: bigger frame gaps are split so the springs stay stable
+  },
+  // Synthesized sound (src/audio.js). A note is { f: Hz, to?: Hz glide target, at: s offset, d: s length, type, gain }.
+  audio: {
+    master: 0.5,
+    musicGain: 0.22,
+    musicTempo: 0.2, // seconds per step of the looping tune
+    musicLookahead: 1.2, // seconds of music scheduled ahead of the clock
+    musicTick: 400, // ms between scheduler runs
+    musicScale: [261.6, 329.6, 392, 523.3, 392, 329.6], // C major arpeggio, one note per step
+    musicBass: [130.8, 130.8, 98, 98], // one bass note per bar of 6 steps (cycles)
+    vibrateMs: { heavy: 40, knockOut: [60, 40, 90] },
+  },
+  // Emoji bubbles over the crowd (src/hud.js): few, short, and never more than `max` on screen.
+  emoji: {
+    max: 2,
+    lifeMs: 1200,
+    cooldownMs: 700, // between two bubbles of the same mood, so a pile-up of losses isn't a swarm
+    bigCrowd: 20, // blobs at the boss that earn the cool face
+    goodGate: '😀',
+    bigCrowdFace: '😎',
+    loss: '😮',
+  },
+  // The winner's dance (game.js celebrate): it turns to face the camera, the camera closes in, it dances,
+  // then the win or lose screen comes up.
+  victory: {
+    turnSeconds: 0.4,
+    danceSeconds: 2.5,
+    zoomRate: 5, // camera follow speed while closing in (1/s): about 0.8 s to settle
+    yaw: 0.35, // rad: the dancer faces +z (towards the player's side), turned a little to the side
+    distance: [3.8, 2.6], // camera distance from the dancer: [base, per unit of its scale]
+    height: 0.7, // camera and look-at height, per unit of the dancer's scale
   },
   reward: { base: 50, perLevel: 10 },
   upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },

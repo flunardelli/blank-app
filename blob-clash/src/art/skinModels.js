@@ -112,7 +112,8 @@ export function createLeader() {
 export function dressChampion(rig, skin) {
   repaintGradients(rig.root, skin.colors);
   if (rig.skinGear) { rig.torso.remove(rig.skinGear); disposeGear(rig.skinGear); }
-  rig.skinGear = buildGear(skin.gear);
-  rig.skinGear.position.y = -rig.hipY; // the champion's body sits hipY below its torso pivot
+  // Gear keeps its own offsets (the crown sits at 1.4), so it rides in a holder that moves the origin to the ground.
+  rig.skinGear = new THREE.Group().add(buildGear(skin.gear));
+  rig.skinGear.position.copy(rig.gearOffset); // gear is modelled from the ground up, the torso bone sits above it
   rig.torso.add(rig.skinGear);
 }

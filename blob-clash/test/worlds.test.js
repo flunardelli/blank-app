@@ -59,3 +59,31 @@ test('every world has a complete, distinct visual theme', async () => {
   }
   assert.equal(new Set(WORLDS.map((w) => w.theme.sky.join())).size, WORLDS.length, 'no two worlds share a sky');
 });
+
+test('the ten worlds field ten different world bosses, ending with the Castle King on level 29', () => {
+  assert.equal(BOSSES.length, 10);
+  assert.equal(new Set(WORLDS.map((w) => w.boss)).size, 10, 'every boss is some world\'s boss');
+  assert.equal(bossForLevel(29).id, 'castleking');
+  assert.equal(levelInfo(29).kind, 'boss');
+  assert.equal(WORLDS[9].arena, 'castle');
+  assert.equal(WORLDS.filter((w) => w.arena).length, 1, 'only the last fight is inside the castle');
+});
+
+test('every boss has its own silhouette, attack and look', () => {
+  for (const key of ['headgear', 'emoji', 'name']) {
+    assert.equal(new Set(BOSSES.map((b) => b[key])).size, BOSSES.length, `${key} is unique`);
+  }
+  assert.equal(new Set(BOSSES.map((b) => b.attack.move)).size, BOSSES.length, 'every boss has a move of its own');
+  assert.equal(new Set(BOSSES.map((b) => b.body.join())).size, BOSSES.length, 'silhouettes differ');
+});
+
+test('a world boss is bigger than a mini boss and enters with its own banner', () => {
+  for (const [i, world] of WORLDS.entries()) {
+    const [mini, boss] = [1, 2].map((slot) => bossForLevel(i * 3 + slot));
+    assert.equal(boss.size, CONFIG.boss.worldBossScale);
+    assert.equal(CONFIG.boss.worldBossScale, 1.5);
+    assert.equal(mini.size, 1, 'a mini boss is small through its body frame instead');
+    assert.ok(boss.banner.title.includes(world.name) && boss.banner.text.includes(boss.name));
+    assert.ok(!mini.banner.title, 'a mini boss has no title line');
+  }
+});

@@ -5,11 +5,13 @@ import { CONFIG, PALETTE } from './config.js';
 import { Effects } from './effects.js';
 import { generateLevel } from './level.js';
 import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './levelView.js';
-import { Animator, clipDuration } from './anim.js';
-import { applyPose, setGlow } from './art/boxer.js';
+import { clipDuration } from './anim.js';
+import { AnimPlayer, clipLibrary } from './animPlayer.js';
+import { BOSS_BODY, CHAMPION_BODY } from './art/bodySpecs.js';
+import { setGlow } from './art/boxer.js';
 import { bossForLevel } from './bosses.js';
 import {
-  attackStats, BOSS_MOVES, CHAMPION_MOVES, CHARGE, GUARD, GUARD_UP, idlePose, KNOCKED_OUT, REACTIONS, RELAX, STAGGERED,
+  attackStats, BOSS_MOVES, CHAMPION_MOVES, CHARGE, DANCES, danceFor, GUARD, GUARD_UP, idlePose, KNOCKED_OUT, REACTIONS, RELAX, STAGGERED,
 } from './moves.js';
 import {
   applyGate, blastVictims, bonusMultiplier, bossBrainStep, bossPunchDamage, bossSpeed, championStats, chestReward, chooseGate,
@@ -24,6 +26,7 @@ import { completeLevel, hasProgress, totalStars } from './progress.js';
 import { mapRows } from './map.js';
 import { LEVEL_COUNT, levelInfo, worldForLevel } from './worlds.js';
 import { loadSave, resetSave, writeSave } from './save.js';
+import { Cooldown } from './emoji.js';
 
 const UPGRADES = [
   { id: 'damage', title: 'Damage', icon: '🥊' },
@@ -36,15 +39,17 @@ const lookCurrent = new THREE.Vector3();
 const bubbleAnchor = new THREE.Vector3();
 
 export class Game {
-  constructor({ world, hud, input }) {
+  constructor({ world, hud, input, audio }) {
     this.world = world;
+    this.audio = audio;
+    this.emojiCooldown = new Cooldown(CONFIG.emoji.cooldownMs);
     this.hud = hud;
     this.input = input;
     this.save = loadSave();
     this.effects = new Effects(world.scene);
     this.player = createPlayerCrowd(world.scene);
     this.champion = createPlayerChampion();
-    this.championAnim = new Animator(GUARD);
+    this.championAnim = new AnimPlayer(GUARD);
     world.scene.add(this.champion.root);
     this.time = 0;
     this.view = null;
@@ -58,6 +63,8 @@ export class Game {
     });
     this.loadLevel(this.save.current);
     this.showTitle();
+    // The animator-made clips arrive a little after the first frame; until then (or if they fail) the keyframed moves play.
+    clipLibrary.load([BOSS_BODY, CHAMPION_BODY]).catch((error) => console.warn('Retargeted clips unavailable:', error));
   }
 
   // ---- Title screen -------------------------------------------------------------
@@ -104,6 +111,7 @@ export class Game {
 
   // ---- Level lifecycle ----------------------------------------------------------
   loadLevel(levelNumber) {
+    this.audio.stopMusic();
     this.view?.dispose();
     this.effects.clear();
     this.hud.clearBubbles();
@@ -111,12 +119,13 @@ export class Game {
     this.level = generateLevel(levelNumber);
     this.boss = bossForLevel(levelNumber);
     this.bossAttack = attackStats(this.boss.attack);
-    this.bossAnim = new Animator(GUARD);
-    this.championAnim = new Animator(GUARD);
+    this.bossAnim = new AnimPlayer(GUARD);
+    this.championAnim = new AnimPlayer(GUARD);
     this.brain = null;
     this.guarding = false;
     this.hitStop = 0;
     this.cameraKick = 0;
+    this.spotlight = null;
     const { theme } = worldForLevel(levelNumber);
     this.world.setTheme(theme);
     this.view = buildLevelView(this.world.scene, this.level, theme);
@@ -175,6 +184,7 @@ export class Game {
     this.state = 'running';
     this.player.mood = 'run';
     this.hud.hideScreens();
+    this.audio.startMusic();
   }
 
   // Dev cheat: jump to the boss fight from the menu or the run, with a crowd that can win it.
@@ -232,6 +242,14 @@ export class Game {
     else if (player.center.d >= this.level.finishD - 1) this.finishRun();
   }
 
+  // Emoji bubble over the crowd; `mood` keeps one kind of bubble from repeating faster than the cooldown.
+  say(mood, face) {
+    if (!this.emojiCooldown.ready(mood, performance.now())) return;
+    const { player } = this;
+    bubbleAnchor.set(player.center.x, 3, toZ(player.center.d));
+    this.hud.showEmoji(face, bubbleAnchor, this.world.camera);
+  }
+
   checkGates() {
     const gate = this.view.gates[this.nextGate];
     if (!gate || this.player.center.d < gate.pair.d) return;
@@ -240,7 +258,11 @@ export class Game {
     const before = this.player.count;
     const removed = this.player.setCount(applyGate(before, chosen));
     if (this.player.count > before) {
-      this.effects.emojis(new THREE.Vector3(this.player.center.x, 3, toZ(this.player.center.d)), 3);
+      this.audio.play('goodGate');
+      this.say('good', CONFIG.emoji.goodGate);
+    } else {
+      this.audio.play('badGate');
+      this.say('loss', CONFIG.emoji.loss);
     }
     removed.forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
     const panel = gate.panels[chosen === gate.pair.left ? 0 : 1];
@@ -266,6 +288,7 @@ export class Game {
   }
 
   checkPickups() {
+    const coinsBefore = this.remainingCoins.length;
     this.remainingCoins = this.remainingCoins.filter((coin) => {
       if (!this.inReach(coin.x, coin.d)) return true;
       this.runCoins += CONFIG.coins.value;
@@ -273,9 +296,11 @@ export class Game {
       this.collectAnimation(this.view.coins.get(coin.id));
       return false;
     });
+    if (this.remainingCoins.length < coinsBefore) this.audio.play('coin'); // one ping per frame, however many were grabbed
     const { key } = this.level;
     if (!this.keyTaken && this.inReach(key.x, key.d)) {
       this.keyTaken = true;
+      this.audio.play('key');
       this.collectAnimation(this.view.key);
       this.hud.setKeys(Math.min(CONFIG.keys.perChest, this.save.keys + 1));
     }
@@ -318,6 +343,7 @@ export class Game {
     player.kill(indices).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
     player.setCount(player.count - hiddenLosses);
     this.effects.shake = Math.max(this.effects.shake, shake);
+    this.say('loss', CONFIG.emoji.loss);
   }
 
   // Bodies crossing a ramp's line take off; each one follows its own arc (see updateJumps).
@@ -465,7 +491,8 @@ export class Game {
   }
 
   bossChest() {
-    return new THREE.Vector3(0, 3.4, toZ(this.level.boss.d) + 1.2);
+    const { chestY, chestHeight } = CONFIG.boss;
+    return new THREE.Vector3(0, chestY + (this.boss.size - 1) * chestHeight, toZ(this.level.boss.d) + 1.2);
   }
 
   // The run is over: chest levels end at the chest, every other level in a boss fight.
@@ -519,7 +546,8 @@ export class Game {
     champion.root.rotation.y = Math.PI;
     champion.root.scale.setScalar(0.01);
     champion.root.visible = true;
-    this.hud.showBanner(`VS ${this.boss.name}`);
+    this.hud.showBanner(this.boss.banner);
+    if (player.count >= CONFIG.emoji.bigCrowd) this.say('big', CONFIG.emoji.bigCrowdFace);
 
     const bodies = player.take(player.units.length);
     player.setCount(0);
@@ -599,11 +627,15 @@ export class Game {
     f.bossHp = Math.max(0, f.bossHp - damage * factor);
     const at = this.bossChest().add(new THREE.Vector3((Math.random() - 0.5) * 1.2, (Math.random() - 0.5), 0));
     if (blocked) {
+      this.audio.play('punch');
       this.effects.impact(at, { stars: 0, scale: 0.4 }); // thud on the gloves: no flinch, no jelly bits
       if (f.bossHp <= 0) this.knockOut();
       return;
     }
     this.bossAnim.react(reaction);
+    const strong = factor > 1 || reaction === REACTIONS.hurtBig;
+    this.audio.play(strong ? 'heavy' : 'punch');
+    if (strong) this.audio.vibrate(CONFIG.audio.vibrateMs.heavy);
     this.effects.impact(at, factor > 1 ? { ...impact, stars: impact.stars + 3, scale: impact.scale * 1.3 } : impact);
     this.effects.burst(at, this.boss.colors.top, { count: 5, speed: 6, size: 0.18 });
     this.effects.shake = Math.max(this.effects.shake, 0.15);
@@ -685,6 +717,8 @@ export class Game {
     if (this.state !== 'boxing') return;
     const heavy = weight > 1.2;
     f.hp = Math.max(0, f.hp - damage);
+    this.audio.play(heavy ? 'heavy' : 'punch');
+    if (heavy) this.audio.vibrate(CONFIG.audio.vibrateMs.heavy);
     this.championAnim.react(heavy ? REACTIONS.hurtBig : REACTIONS.hurt);
     const at = this.champion.root.position.clone().setY(1.6 * this.championScale / 2 + 0.6);
     this.effects.impact(at, { stars: Math.round(3 * weight), scale: 0.8 * weight });
@@ -702,6 +736,8 @@ export class Game {
     setGlow(this.view.boss, 0);
     this.hud.showFight(false);
     this.hud.popText('K.O.!');
+    this.audio.play('ko');
+    this.audio.vibrate(CONFIG.audio.vibrateMs.knockOut);
     this.startBonus(this.fight.hp / this.fight.maxHp);
   }
 
@@ -711,7 +747,7 @@ export class Game {
     const { position } = this.champion.root;
     this.champion.root.visible = false;
     this.effects.burst(position.clone().setY(1.5), PALETTE.player.bits, { count: 40, speed: 10, size: 0.3 });
-    this.lose();
+    this.lose({ dance: true });
   }
 
   startBonus(healthFraction) {
@@ -724,28 +760,65 @@ export class Game {
     const from = rig.anchor.clone();
     const to = new THREE.Vector3(0, 0.25, toZ(this.level.ladderStart + tile.d));
     const height = 3 + (from.z - to.z) * 0.06;
-    this.championAnim.play(CHAMPION_MOVES.cheer, { hold: true });
+    // The animators' clips when loaded: a thumbs-up for the champion, and the boss lands on its feet and
+    // collapses with their death clip. Without them the keyframed cheer plays and the boss lands flat.
+    const collapses = Boolean(clipLibrary.get(rig.body.spec, 'Death'));
+    this.championAnim.playClip('ThumbsUp', { loop: true, hold: true, fallback: CHAMPION_MOVES.cheer });
     this.bossAnim.play(KNOCKED_OUT, { hold: true });
     this.effects.impact(new THREE.Vector3(0, 4, from.z), { stars: 10, scale: 1.8 });
     this.effects.shake = 1;
     this.effects.tween(1.4 + (from.z - to.z) * 0.012, (k) => {
       rig.anchor.lerpVectors(from, to, k);
       rig.anchor.y += Math.sin(k * Math.PI) * height;
-      boss.rotation.x = -k * Math.PI * 3;
+      boss.rotation.x = -k * Math.PI * (collapses ? 4 : 3);
     }, () => {
-      boss.rotation.x = -Math.PI / 2; // KO: flat on its back
-      rig.anchor.y = 0.6;
+      if (collapses) {
+        boss.rotation.x = 0;
+        rig.anchor.y = to.y;
+        this.bossAnim.playClip('Death', { hold: true, fallback: KNOCKED_OUT });
+      } else {
+        boss.rotation.x = -Math.PI / 2; // KO: flat on its back
+        rig.anchor.y = 0.6;
+      }
       tile.tile.material.color.set(0x7cf05a);
       // Cartoon landing: a dust ring and a burst of stars (no splatter).
       this.effects.dustRing(new THREE.Vector3(to.x, 0.5, to.z), 3);
       this.effects.impact(new THREE.Vector3(to.x, 1.5, to.z), { stars: 8, scale: 1.6 });
       this.effects.shake = 1;
-      this.effects.tween(0.9, () => {}, () => this.complete());
+      this.bossAnim.react(REACTIONS.land);
+      // Then the camera goes back to the champion, who turns to it and dances before the result.
+      this.later(0.9, () => this.celebrate(this.champion, this.championAnim, DANCES.champion, () => this.complete()));
     });
   }
 
+  // The winner turns to face the camera, the camera closes in and it dances; then `done` brings up the result.
+  celebrate(rig, anim, dance, done) {
+    const { turnSeconds, danceSeconds, yaw } = CONFIG.victory;
+    const from = rig.root.rotation.y;
+    const turn = Math.atan2(Math.sin(yaw - from), Math.cos(yaw - from)); // the short way round
+    this.spotlight = { rig, yaw };
+    anim.dance(dance);
+    this.effects.tween(turnSeconds, (k) => { rig.root.rotation.y = from + turn * k * k * (3 - 2 * k); });
+    this.later(danceSeconds, done);
+  }
+
+  // Front-on close-up of the dancer, sized by its scale.
+  spotlightShot({ rig, yaw }) {
+    const { position, scale } = rig.root;
+    const { distance, height } = CONFIG.victory;
+    const dist = distance[0] + distance[1] * scale.y;
+    const eye = position.y + height * scale.y;
+    return {
+      pos: [position.x + Math.sin(yaw) * dist, eye + 0.3 * scale.y, position.z + Math.cos(yaw) * dist],
+      look: [position.x, eye, position.z],
+    };
+  }
+
   complete() {
+    this.spotlight = null;
     this.state = 'complete';
+    this.audio.stopMusic();
+    this.audio.play('win');
     const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
     let chest = this.stageCoins;
     if (this.keyTaken) this.save.keys += 1;
@@ -776,16 +849,21 @@ export class Game {
     });
   }
 
-  lose() {
+  // After a lost fight (`dance`) the boss celebrates on camera before the lose screen.
+  lose({ dance = false } = {}) {
     this.state = 'lost';
+    this.audio.stopMusic();
+    this.audio.play('lose');
     this.player.setCount(0).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
     this.save.coins += this.runCoins; // keys only count on a win
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
     this.hud.setKeys(this.save.keys);
-    this.effects.tween(0.8, () => {}, () => this.hud.showLose({
+    const showLose = () => this.hud.showLose({
       coins: this.runCoins, onContinue: () => this.loadLevel(this.level.level),
-    }));
+    });
+    if (dance && this.view.boss) this.later(0.5, () => this.celebrate(this.view.boss, this.bossAnim, danceFor(this.boss.id), showLose));
+    else this.later(0.8, showLose);
   }
 
   // ---- Presentation -------------------------------------------------------------
@@ -806,20 +884,23 @@ export class Game {
     this.animateBoxers(dt);
   }
 
-  // Both boxers bounce in guard and play their clips; calmer before the bell.
+  // Both boxers bounce in guard and play their clips; before the bell the boss idles with the animators' clip.
   animateBoxers(dt) {
-    const energy = this.state === 'boxing' ? 1 : 0.35;
+    const fighting = this.state === 'boxing';
+    const energy = fighting ? 1 : 0.35;
+    const ambient = fighting ? null : 'Idle';
     if (this.view.boss) {
-      const speed = this.state === 'boxing' && this.brain ? bossSpeed(this.brain) : 1; // an enraged boss moves faster
-      applyPose(this.view.boss, this.bossAnim.update(dt * speed, idlePose(this.time, energy)));
+      const speed = fighting && this.brain ? bossSpeed(this.brain) : 1; // an enraged boss moves faster
+      this.bossAnim.drive(this.view.boss, dt * speed, idlePose(this.time, energy), ambient);
     }
     if (this.champion.root.visible) {
-      applyPose(this.champion, this.championAnim.update(dt, idlePose(this.time, energy, 1.7)));
+      this.championAnim.drive(this.champion, dt, idlePose(this.time, energy, 1.7), ambient);
     }
     this.cameraKick = Math.max(0, this.cameraKick - dt * 3);
   }
 
   cameraFocus() {
+    if (this.spotlight) return this.spotlightShot(this.spotlight);
     const { center } = this.player;
     const r = this.player.radius;
     switch (this.state) {
@@ -831,7 +912,9 @@ export class Game {
         const mid = toZ(this.level.boss.d - 2.6);
         // Big hits punch the camera in a little.
         const kick = this.cameraKick * 2.5;
-        return { pos: [13 - kick, 6.5 - kick * 0.3, mid + 5 - kick * 0.4], look: [0, 2.8, mid - 0.5] };
+        // A bigger boss needs the camera further back and aimed higher to stay in frame.
+        const grow = this.boss.size - 1;
+        return { pos: [13 + grow * 9 - kick, 6.5 + grow * 4 - kick * 0.3, mid + 5 - kick * 0.4], look: [0, 2.8 + grow * 2.4, mid - 0.5] };
       }
       case 'chest':
         return this.chestStage.camera();
@@ -857,7 +940,8 @@ export class Game {
       cameraGoal.fromArray(focus.pos);
       lookGoal.fromArray(focus.look);
     }
-    const k = this.snapCamera ? 1 : Math.min(1, dt * (this.state === 'bonus' || this.state === 'chest' ? 7 : 4));
+    const rate = this.spotlight ? CONFIG.victory.zoomRate : this.state === 'bonus' || this.state === 'chest' ? 7 : 4;
+    const k = this.snapCamera ? 1 : Math.min(1, dt * rate);
     this.snapCamera = false;
     camera.position.lerp(cameraGoal, k);
     lookCurrent.lerp(lookGoal, k);
@@ -883,7 +967,7 @@ export class Game {
       this.hud.placeBubble(bubble, bubbleAnchor, camera, crowd.count, crowd.count > 0 && inRange(crowd.center.d));
     }
 
-    bubbleAnchor.set(0, 6.6, toZ(this.level.boss.d));
+    bubbleAnchor.set(0, 6.6 + (this.boss.size - 1) * CONFIG.boss.bubbleHeight, toZ(this.level.boss.d));
     const showBossHp = this.level.kind !== 'chest' && (this.state === 'running' || this.state === 'skirmish');
     this.hud.placeBubble(this.bossBubble, bubbleAnchor, camera, this.level.boss.hp, showBossHp && inRange(this.level.boss.d));
   }

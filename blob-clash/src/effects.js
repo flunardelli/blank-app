@@ -1,6 +1,6 @@
 // Short-lived visual effects. Each effect is a function(dt) that returns false when finished.
 import * as THREE from 'three';
-import { emojiTexture, puffTexture, starTexture } from './art/textures.js';
+import { puffTexture, starTexture } from './art/textures.js';
 
 const bitGeometry = new THREE.SphereGeometry(1, 12, 8);
 const WHITE = new THREE.Color(0xffffff);
@@ -112,15 +112,6 @@ export class Effects {
       const a = (i / 10) * Math.PI * 2;
       const v = new THREE.Vector3(Math.cos(a), 0.15, Math.sin(a)).multiplyScalar(radius * 1.8);
       this.sprite(puffTexture(), position, { size: 1.4, velocity: v, life: 0.55 });
-    }
-  }
-
-  emojis(position, count = 3) {
-    const faces = ['😀', '😎', '😊', '😄', '🤩', '😁'];
-    for (let i = 0; i < count; i++) {
-      const at = position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, Math.random(), (Math.random() - 0.5) * 2));
-      const face = faces[Math.floor(Math.random() * faces.length)];
-      this.sprite(emojiTexture(face), at, { size: 1.3, velocity: new THREE.Vector3(0, 1.6, 0), life: 1.1 });
     }
   }
 

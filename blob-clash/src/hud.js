@@ -1,6 +1,8 @@
 // DOM overlay: coins, progress, count bubbles and the menu / complete / lose screens.
 import * as THREE from 'three';
 import { formatCoins } from './rules.js';
+import { CONFIG } from './config.js';
+import { overflow } from './emoji.js';
 
 const projected = new THREE.Vector3();
 const $ = (id) => document.getElementById(id);
@@ -20,6 +22,36 @@ export class Hud {
     this.hpPlayer = $('hp-player');
     this.hpBoss = $('hp-boss');
     this.dodgeHint = $('dodge-hint');
+    this.emojis = []; // live emoji balloons, oldest first
+    this.soundButton = $('sound-btn');
+  }
+
+  /** The mute button: `onToggle` flips the preference, `muted` is its current state. */
+  bindSound({ muted, onToggle }) {
+    const paint = (isMuted) => {
+      this.soundButton.textContent = isMuted ? '🔇' : '🔊';
+      this.soundButton.setAttribute('aria-pressed', String(isMuted));
+    };
+    paint(muted);
+    this.soundButton.addEventListener('click', () => paint(onToggle()));
+  }
+
+  /** A balloon with `face` floating up from a 3D position; at most CONFIG.emoji.max at once, and each lasts lifeMs. */
+  showEmoji(face, worldPosition, camera) {
+    const { max, lifeMs } = CONFIG.emoji;
+    overflow(this.emojis, max).forEach((old) => this.removeEmoji(old));
+    const el = Object.assign(document.createElement('div'), { className: 'emoji-bubble', textContent: face });
+    el.style.animationDuration = `${lifeMs}ms`;
+    this.placeBubble(el, worldPosition, camera, face);
+    this.bubbles.append(el);
+    this.emojis.push(el);
+    el.timer = setTimeout(() => this.removeEmoji(el), lifeMs);
+  }
+
+  removeEmoji(el) {
+    clearTimeout(el.timer);
+    el.remove();
+    this.emojis = this.emojis.filter((e) => e !== el);
   }
 
   setLevel(level) {
@@ -54,8 +86,12 @@ export class Hud {
     el.hideTimer = setTimeout(() => { el.hidden = true; }, 1600);
   }
 
-  showBanner(text) {
-    this.flash($('banner'), text);
+  /** A string, or `{ text, title }`: the big line and an optional smaller line above it (a world boss's entrance). */
+  showBanner(banner) {
+    const { text, title } = typeof banner === 'string' ? { text: banner } : banner;
+    const el = $('banner');
+    this.flash(el, text);
+    if (title) el.prepend(Object.assign(document.createElement('small'), { textContent: title }));
   }
 
   popText(text) {
@@ -82,6 +118,8 @@ export class Hud {
   }
 
   clearBubbles() {
+    this.emojis.forEach((el) => clearTimeout(el.timer));
+    this.emojis = [];
     this.bubbles.replaceChildren();
   }
 
@@ -158,21 +196,21 @@ export class Hud {
   // `celebrate` ({ done, unlocked }) stamps the square just beaten and bounces the one it unlocked.
   showMap({ rows, onPlay, onBack, celebrate }) {
     const kindMark = { mini: '🥊', boss: '👑', chest: '🎁' };
-    $('map-rows').replaceChildren(...rows.map(({ world, levels }) => {
+    $('map-rows').replaceChildren(...rows.map(({ world, boss, levels }) => {
       const row = Object.assign(document.createElement('div'), { className: 'map-row' });
       row.style.setProperty('--accent', world.accent);
       const cells = levels.map(({ level, kind, status, stars }) => {
         const cell = Object.assign(document.createElement('button'), { className: `map-cell ${status} ${kind}` });
         cell.disabled = status === 'locked';
         cell.setAttribute('aria-label', `Fase ${level}`);
-        cell.innerHTML = `<span class="mark">${status === 'locked' ? '🔒' : kindMark[kind]}</span><span class="num">${level}</span>`
+        cell.innerHTML = `<span class="mark">${status === 'locked' ? '🔒' : kind === 'boss' ? boss.emoji : kindMark[kind]}</span><span class="num">${level}</span>`
           + (stars ? `<span class="stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>` : '');
         cell.onclick = () => onPlay(level);
         if (celebrate?.done === level) cell.classList.add('just-done');
         if (celebrate?.unlocked === level) cell.classList.add('just-unlocked');
         return cell;
       });
-      row.innerHTML = `<h2 class="ink">${world.name}</h2><div class="map-cells"></div>`;
+      row.innerHTML = `<h2 class="ink">${world.name}<small>${boss.emoji} ${boss.name}</small></h2><div class="map-cells"></div>`;
       row.querySelector('.map-cells').append(...cells);
       return row;
     }));

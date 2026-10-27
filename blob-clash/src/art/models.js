@@ -294,7 +294,7 @@ export function createFinishLine() {
 }
 
 // Boxing ring with corner posts, yellow ropes and a glass arch behind the boss.
-export function createRing(depth) {
+export function createRing(depth, arena) {
   const { width } = CONFIG.track;
   const group = new THREE.Group();
   const platform = new THREE.Mesh(new THREE.BoxGeometry(width + 0.8, 0.5, depth), glossy(0xf6f2ff));
@@ -342,7 +342,42 @@ export function createRing(depth) {
   );
   door.position.set(0, 3.4, archZ);
   group.add(beam, door);
+  if (arena === 'castle') addCastle(group, depth);
   return group;
+}
+
+// The castle arena: a stone wall with battlements behind the champion's side, a tower at every back corner and torches
+// on the ring posts, so the fight happens inside the castle courtyard.
+function addCastle(group, depth) {
+  const { width } = CONFIG.track;
+  const stone = glossy(PALETTE.castleStone, { roughness: 0.9 });
+  const wall = (x) => {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 5, depth + 3), stone);
+    body.position.set(x, 2.5, -depth / 2);
+    group.add(body);
+    const count = Math.round((depth + 3) / 1.6);
+    for (let i = 0; i < count; i++) {
+      const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.9), stone);
+      merlon.position.set(x, 5.4, -depth / 2 + (i / (count - 1) - 0.5) * (depth + 2.2));
+      group.add(merlon);
+    }
+  };
+  const tower = (x, z) => {
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.7, 9, 14), stone);
+    body.position.set(x, 4.5, z);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.9, 2.6, 14), glossy(PALETTE.castleRoof));
+    roof.position.set(x, 10.3, z);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.7), new THREE.MeshBasicMaterial({ color: PALETTE.castleRoof, side: THREE.DoubleSide }));
+    flag.position.set(x + 0.65, 12.0, z);
+    group.add(body, roof, flag);
+  };
+  for (const side of [-1, 1]) {
+    if (side < 0) wall(side * (width / 2 + 1.4)); // the fight camera looks in from +x, so that wall stays open
+    tower(side * (width / 2 + 1.4), -depth - 1.6);
+    const torch = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffb030 }));
+    torch.position.set(side * (width / 2), 2.4, -0.4);
+    group.add(torch);
+  }
 }
 
 // Bonus ladder: tiles x1.0 … x5.0 where the knocked-out boss lands.

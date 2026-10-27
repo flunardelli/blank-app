@@ -13,6 +13,7 @@ import {
   createSpikedPillar,
 } from './art/hazards.js';
 import { bossForLevel } from './bosses.js';
+import { levelInfo } from './worlds.js';
 import { makeJelly, withJellyPhases } from './art/jelly.js';
 import { Crowd } from './crowd.js';
 import { axeAngle, ballState, pusherBox, sliderX, sweepX } from './rules.js';
@@ -250,7 +251,7 @@ export function buildLevelView(scene, level, theme) {
     chest = createChest();
     place(chest.root, level.boss.d);
   } else {
-    place(createRing(CONFIG.boss.ringDepth), level.finishD + 0.6);
+    place(createRing(CONFIG.boss.ringDepth, level.kind === 'boss' ? levelInfo(level.level).world.arena : undefined), level.finishD + 0.6);
     boss = createBoss(bossForLevel(level.level));
     boss.anchor.set(0, 0.25, toZ(level.boss.d));
     root.add(boss.root);
@@ -279,6 +280,7 @@ export function buildLevelView(scene, level, theme) {
       root.traverse((object) => {
         if (!object.isMesh || Object.values(shared).includes(object.geometry)) return;
         object.geometry.dispose();
+        object.skeleton?.dispose();
       });
     },
   };
