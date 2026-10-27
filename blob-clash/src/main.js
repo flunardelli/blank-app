@@ -4,6 +4,7 @@ import { Hud } from './hud.js';
 import { Input } from './input.js';
 import { Game } from './game.js';
 import { Pause } from './pause.js';
+import { SkinShop } from './skinShop.js';
 
 // Canvas textures render text with Fredoka, so wait for the font before building the level.
 await document.fonts.load('700 64px Fredoka').catch(() => {});
@@ -13,6 +14,7 @@ const world = createWorld(canvas);
 const hud = new Hud();
 const input = new Input(canvas);
 const game = new Game({ world, hud, input });
+const skinShop = new SkinShop({ game, hud, scene: world.scene });
 const pause = new Pause({
   canPause: () => hud.canPause(),
   onChange: (paused) => {
@@ -36,6 +38,7 @@ const clock = new THREE.Clock();
 world.renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 1 / 20); // avoid tunnelling after a tab switch
   if (!pause.paused) game.update(dt); // still render while paused so the frozen scene stays on screen
+  skinShop.update();
   world.render();
 });
 

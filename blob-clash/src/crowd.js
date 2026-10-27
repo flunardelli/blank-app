@@ -28,6 +28,10 @@ export class Crowd {
     this.count = 0;
     this.center = { x: 0, d: 0 };
     this.mood = 'idle'; // idle | run | fight | cheer
+    // When set, body 0 is not drawn: a separate leader mesh (skins) takes its place, and its
+    // transform is kept here for that mesh to copy.
+    this.leaderSeparate = false;
+    this.leaderMatrix = new THREE.Matrix4();
   }
 
   get radius() {
@@ -84,7 +88,12 @@ export class Crowd {
       const pop = unit.grow < 1 ? 1 + Math.sin(unit.grow * Math.PI) * 0.35 : 1;
       const squash = moving ? 1 + Math.sin(t * 2) * 0.05 : 1;
       scale.set(pop / Math.sqrt(squash), pop * squash, pop / Math.sqrt(squash)).multiplyScalar(unit.grow * 0.9 + 0.1);
-      this.mesh.setMatrixAt(i, matrix.compose(position, rotation, scale));
+      matrix.compose(position, rotation, scale);
+      if (i === 0 && this.leaderSeparate) {
+        this.leaderMatrix.copy(matrix);
+        matrix.makeScale(0, 0, 0);
+      }
+      this.mesh.setMatrixAt(i, matrix);
     });
     this.mesh.count = this.units.length;
     this.mesh.instanceMatrix.needsUpdate = true;
