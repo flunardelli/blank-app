@@ -39,8 +39,8 @@ const bossById = (id) => BOSSES.find((b) => b.id === id);
 
 /**
  * The opponent of a level, read from its world: a mini boss on level 1 (smaller, in the world's colour,
- * simple jabs), the world boss on level 2. Level 3 is a chest stage and has no boss of its own; until
- * that stage exists it plays the world boss too.
+ * simple jabs), the world boss on level 2. Level 3 is a chest stage and has no fight; it still
+ * answers with the world boss so callers always get a valid boss.
  */
 export function bossForLevel(level) {
   const { world, kind } = levelInfo(level);

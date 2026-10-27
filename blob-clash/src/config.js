@@ -164,6 +164,30 @@ export const CONFIG = {
     cheats: [['KeyB', 'KeyL', 'KeyO', 'KeyB'], ['KeyI', 'KeyD', 'KeyD', 'KeyQ', 'KeyD']],
   },
   keys: { perChest: 3, chestCoinsPerLevel: 60 },
+  // Chest stage (level 3 of every world): the crowd hops into a giant chest, the camera swings from the
+  // side to a front zoom while the lid jolts open and a fountain of coins bursts out. Times are seconds.
+  chest: {
+    coinsPerBlob: 5, // payout per blob that made it to the chest in the first world...
+    worldGrowth: 0.4, // ...and every later world pays this much more per blob (x1.4 in the 2nd, x1.8 in the 3rd)
+    approach: 0.9, // camera settles on the side view before the first hop
+    hopSpan: 1.4, // the first and the last blob take off this far apart
+    hopFlight: 0.7,
+    hopHeight: 4,
+    rotate: 1.2, // side -> front camera swing
+    lidDelay: 0.3, // chest shakes this long before the lid jumps open
+    lidOpen: 0.45,
+    lidAngle: 1.95, // rad
+    lidAjar: 0.3, // the gap the blobs hop into, until the lid slams shut
+    coins: 360,
+    coinStartY: 2.4,
+    coinSpeedUp: [9, 17],
+    coinSpeedOut: [1, 7],
+    coinPour: 0.5, // coins leave the chest spread over this long
+    coinFloor: 0.3, // coins vanish once they land (the floor leaves nothing behind)
+    coinVanish: 0.2,
+    gravity: 16,
+    camera: { sideRadius: 15, frontRadius: 9, sideHeight: 6, frontHeight: 5.5, lookY: 2.4, lookLead: 3 },
+  },
   reward: { base: 50, perLevel: 10 },
   upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
 };

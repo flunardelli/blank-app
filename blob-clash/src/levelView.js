@@ -7,6 +7,7 @@ import {
   gummyMaterial, humanoidGeometry,
 } from './art/models.js';
 import { createBoss, createChampion } from './art/boxer.js';
+import { createChest } from './art/chest.js';
 import { createAxe, createBomb, createRamp, createSaw, createSawRail } from './art/hazards.js';
 import { bossForLevel } from './bosses.js';
 import { makeJelly, withJellyPhases } from './art/jelly.js';
@@ -72,8 +73,10 @@ export function buildLevelView(scene, level, theme) {
     return object;
   };
 
-  const ladder = createLadder();
-  const trackEnd = level.ladderStart + ladder.length + 6;
+  // Chest levels end at a chest instead of a boss ring and a bonus ladder.
+  const isChest = level.kind === 'chest';
+  const ladder = isChest ? null : createLadder();
+  const trackEnd = isChest ? level.boss.d + 10 : level.ladderStart + ladder.length + 6;
   root.add(createTrack(-12, trackEnd, theme));
 
   const gates = level.gates.map((pair) => {
@@ -171,11 +174,18 @@ export function buildLevelView(scene, level, theme) {
   key.position.y = 1.2;
 
   place(createFinishLine(), level.finishD);
-  place(createRing(CONFIG.boss.ringDepth), level.finishD + 0.6);
-  const boss = createBoss(bossForLevel(level.level));
-  boss.anchor.set(0, 0.25, toZ(level.boss.d));
-  root.add(boss.root);
-  place(ladder.group, level.ladderStart);
+  let boss = null;
+  let chest = null;
+  if (isChest) {
+    chest = createChest();
+    place(chest.root, level.boss.d);
+  } else {
+    place(createRing(CONFIG.boss.ringDepth), level.finishD + 0.6);
+    boss = createBoss(bossForLevel(level.level));
+    boss.anchor.set(0, 0.25, toZ(level.boss.d));
+    root.add(boss.root);
+    place(ladder.group, level.ladderStart);
+  }
 
   return {
     root,
@@ -185,7 +195,8 @@ export function buildLevelView(scene, level, theme) {
     enemies,
     walkers,
     key,
-    boss,
+    boss, // null on chest levels
+    chest, // { root, rig, lid, glow }, only on chest levels
     ladder,
     /** Animates every moving hazard; a new hazard only needs an `update(time, dt)` on its entry. */
     update(time, dt) {

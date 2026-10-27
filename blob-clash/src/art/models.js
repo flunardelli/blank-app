@@ -201,11 +201,22 @@ export function createKey() {
 }
 
 const coinGeometry = new THREE.CylinderGeometry(0.42, 0.42, 0.1, 28).rotateX(Math.PI / 2);
-export function createCoin() {
+const coinMaterials = () => {
   const face = new THREE.MeshStandardMaterial({ map: coinFaceTexture(), metalness: 0.3, roughness: 0.3 });
-  const coin = new THREE.Mesh(coinGeometry, [glossy(0xe0a000, { metalness: 0.4 }), face, face]);
+  return [glossy(0xe0a000, { metalness: 0.4 }), face, face];
+};
+export function createCoin() {
+  const coin = new THREE.Mesh(coinGeometry, coinMaterials());
   coin.castShadow = true;
   return coin;
+}
+
+/** `count` coins drawn in one call; the caller writes each instance matrix. */
+export function createCoinSwarm(count) {
+  const swarm = new THREE.InstancedMesh(coinGeometry, coinMaterials(), count);
+  swarm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  swarm.frustumCulled = false;
+  return swarm;
 }
 
 // ---- Track pieces ---------------------------------------------------------------

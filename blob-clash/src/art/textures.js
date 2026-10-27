@@ -150,6 +150,27 @@ export const melonFaceTexture = () => cached('melon', () => {
   return toTexture(canvas);
 });
 
+export const woodTexture = () => cached('wood', () => {
+  const [canvas, ctx] = makeCanvas(256, 256);
+  const planks = ['#9a5a2a', '#8c4f24', '#a3622f', '#905326'];
+  planks.forEach((color, i) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(0, i * 64, 256, 64);
+    ctx.strokeStyle = 'rgba(60,28,8,0.35)'; // grain
+    ctx.lineWidth = 2;
+    for (let g = 0; g < 4; g++) {
+      const y = i * 64 + 10 + g * 15;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.bezierCurveTo(80, y - 4, 170, y + 5, 256, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(40,18,4,0.7)'; // plank gap
+    ctx.fillRect(0, i * 64, 256, 3);
+  });
+  return toTexture(canvas, { repeat: true });
+});
+
 export const coinFaceTexture = () => cached('coin', () => {
   const [canvas, ctx] = makeCanvas(128, 128);
   ctx.fillStyle = '#ffc21a';
