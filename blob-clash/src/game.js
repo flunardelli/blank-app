@@ -15,6 +15,7 @@ import {
 } from './rules.js';
 import { createSequences } from './cheat.js';
 import { completeLevel, hasProgress } from './progress.js';
+import { mapRows } from './map.js';
 import { loadSave, resetSave, writeSave } from './save.js';
 
 const UPGRADES = [
@@ -60,10 +61,21 @@ export class Game {
       level: this.save.current,
       hasProgress: hasProgress(this.save),
       onContinue: () => this.leaveTitle(),
+      onMap: () => this.openMap(() => this.showTitle()),
       onNew: () => {
         this.save = resetSave();
         this.loadLevel(this.save.current);
       },
+    });
+  }
+
+  // Opens the map; `onBack` says where VOLTAR leads. Picking a square plays that level from its menu.
+  openMap(onBack = () => this.loadLevel(this.level.level)) {
+    this.state = 'map';
+    this.hud.showMap({
+      rows: mapRows(this.save),
+      onBack,
+      onPlay: (level) => this.loadLevel(level),
     });
   }
 
@@ -120,6 +132,7 @@ export class Game {
         ...u, level: upgrades[u.id], cost: upgradeCost(upgrades[u.id]), affordable: coins >= upgradeCost(upgrades[u.id]),
       })),
       onBuy: (id) => this.buyUpgrade(id),
+      onMap: () => this.openMap(),
     });
   }
 

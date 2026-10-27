@@ -20,7 +20,11 @@ const pause = new Pause({
     hud.showPause(paused);
   },
 });
-hud.bindPause({ onPause: () => pause.pause(), onResume: () => pause.resume() });
+hud.bindPause({
+  onPause: () => pause.pause(),
+  onResume: () => pause.resume(),
+  onMap: () => { pause.resume(); game.openMap(); },
+});
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && !e.repeat) pause.toggle();
 });

@@ -11,7 +11,7 @@ export class Hud {
     this.topbar = $('topbar');
     this.progress = $('progress-fill');
     this.bubbles = $('bubbles');
-    this.screens = { title: $('title'), menu: $('menu'), complete: $('complete'), lose: $('lose') };
+    this.screens = { title: $('title'), map: $('map'), menu: $('menu'), complete: $('complete'), lose: $('lose') };
     this.pauseButton = $('pause-btn');
     this.pauseScreen = $('pause');
     this.keySlots = [...document.querySelectorAll('.key-slot')];
@@ -89,7 +89,7 @@ export class Hud {
 
   show(name) {
     Object.entries(this.screens).forEach(([key, el]) => { el.hidden = key !== name; });
-    this.topbar.classList.toggle('hidden-progress', name === 'menu' || name === 'title');
+    this.topbar.classList.toggle('hidden-progress', ['menu', 'title', 'map'].includes(name));
     this.pauseButton.hidden = name !== null; // only offered while a level is being played
   }
 
@@ -102,13 +102,14 @@ export class Hud {
     this.pauseScreen.hidden = !visible;
   }
 
-  bindPause({ onPause, onResume }) {
+  bindPause({ onPause, onResume, onMap }) {
     this.pauseButton.addEventListener('click', onPause);
     $('pause-resume').addEventListener('click', onResume);
+    $('pause-map').addEventListener('click', onMap);
   }
 
   /** First screen: Continue (or Play when there is nothing to continue) and New game, which asks before erasing. */
-  showTitle({ level, hasProgress, onContinue, onNew }) {
+  showTitle({ level, hasProgress, onContinue, onNew, onMap }) {
     const confirm = $('title-confirm');
     const buttons = $('title-buttons');
     const ask = (asking) => {
@@ -118,6 +119,7 @@ export class Hud {
     ask(false);
     $('title-continue').innerHTML = hasProgress ? `CONTINUAR<small>FASE ${level}</small>` : 'JOGAR';
     $('title-continue').onclick = onContinue;
+    $('title-map').onclick = onMap;
     $('title-new').hidden = !hasProgress;
     $('title-new').onclick = () => ask(true);
     $('title-confirm-no').onclick = () => ask(false);
@@ -125,8 +127,10 @@ export class Hud {
     this.show('title');
   }
 
-  showMenu({ level, upgrades, onBuy }) {
+  showMenu({ level, upgrades, onBuy, onMap }) {
     $('menu-level').textContent = `Level ${level}`;
+    $('menu-map').onclick = onMap;
+    $('menu-map').addEventListener('pointerdown', (e) => e.stopPropagation());
     const cards = $('upgrade-cards');
     cards.replaceChildren(...upgrades.map((upgrade) => {
       const card = document.createElement('button');
@@ -141,6 +145,30 @@ export class Hud {
       return card;
     }));
     this.show('menu');
+  }
+
+  // Rows come from mapRows(); only squares that are not locked can be played.
+  showMap({ rows, onPlay, onBack }) {
+    const kindMark = { mini: '🥊', boss: '👑', chest: '🎁' };
+    $('map-rows').replaceChildren(...rows.map(({ world, levels }) => {
+      const row = Object.assign(document.createElement('div'), { className: 'map-row' });
+      row.style.setProperty('--accent', world.accent);
+      const cells = levels.map(({ level, kind, status, stars }) => {
+        const cell = Object.assign(document.createElement('button'), { className: `map-cell ${status} ${kind}` });
+        cell.disabled = status === 'locked';
+        cell.setAttribute('aria-label', `Fase ${level}`);
+        cell.innerHTML = `<span class="mark">${status === 'locked' ? '🔒' : kindMark[kind]}</span><span class="num">${level}</span>`
+          + (stars ? `<span class="stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>` : '');
+        cell.onclick = () => onPlay(level);
+        return cell;
+      });
+      row.innerHTML = `<h2 class="ink">${world.name}</h2><div class="map-cells"></div>`;
+      row.querySelector('.map-cells').append(...cells);
+      return row;
+    }));
+    $('map-back').onclick = onBack;
+    this.show('map');
+    $('map-rows').querySelector('.current')?.scrollIntoView({ block: 'center' });
   }
 
   showComplete({ level, coins, multiplier, chest, onNext }) {

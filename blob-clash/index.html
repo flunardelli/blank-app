@@ -49,6 +49,7 @@
     <h1 class="stacked logo"><span class="ink">BLOB</span><span class="ink big yellow">CLASH</span></h1>
     <div id="title-buttons">
       <button id="title-continue" class="btn cyan ink">CONTINUAR</button>
+      <button id="title-map" class="btn yellow ink">MAPA</button>
       <button id="title-new" class="btn pink ink">NOVO JOGO</button>
     </div>
     <div id="title-confirm" class="panel" hidden>
@@ -60,8 +61,15 @@
     </div>
   </section>
 
+  <section id="map" class="screen" hidden>
+    <h1 class="ink title">MAPA</h1>
+    <div id="map-rows"></div>
+    <button id="map-back" class="btn cyan small ink">VOLTAR</button>
+  </section>
+
   <section id="menu" class="screen" hidden>
     <h1 id="menu-level" class="ink title">Level 1</h1>
+    <button id="menu-map" class="btn yellow small ink">MAPA</button>
     <div class="hint">
       <p class="ink">Hold&amp;Drag to move</p>
       <div class="hint-track"><span class="hint-hand">👆</span></div>
@@ -90,6 +98,7 @@
   <section id="pause" class="screen dim" hidden>
     <h1 class="stacked"><span class="ink big">PAUSED</span></h1>
     <button id="pause-resume" class="btn cyan ink">CONTINUE</button>
+    <button id="pause-map" class="btn yellow small ink">MAPA</button>
   </section>
 
   <script type="module" src="src/main.js"></script>
