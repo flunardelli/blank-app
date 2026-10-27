@@ -19,6 +19,9 @@ export function starsFor(multiplier, [oneStarUpTo, twoStarsUpTo] = CONFIG.campai
   return multiplier <= twoStarsUpTo ? 2 : 3;
 }
 
+// Anything worth protecting from "new game": a finished level, or having moved past the first one.
+export const hasProgress = (save) => save.current > 1 || Object.keys(save.completed).length > 0;
+
 export const isUnlocked = (save, level) => Number.isInteger(level) && level >= 1 && level <= save.unlocked;
 
 const clampLevel = (n, levels) => Math.min(levels, Math.max(1, Math.floor(Number(n)) || 1));

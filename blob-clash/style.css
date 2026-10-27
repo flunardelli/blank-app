@@ -143,3 +143,14 @@ h1.stacked .big { font-size: 1.2em; }
 #pause-btn i { width: 6px; height: 18px; border-radius: 2px; background: #fff; border: 2px solid var(--ink); box-sizing: content-box; }
 #pause-btn:active { transform: translateX(-50%) translateY(3px); box-shadow: 0 1px 0 var(--ink); }
 #pause { z-index: 7; }
+
+/* ---- Title screen ---- */
+#title { z-index: 6; justify-content: center; gap: 44px; background: linear-gradient(rgba(20, 30, 50, 0.15), rgba(20, 30, 50, 0.5)); }
+.logo { font-size: clamp(52px, 17vw, 104px); transform: rotate(-3deg); }
+#title-buttons, .panel { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.btn.pink { background: linear-gradient(#ff7ac8, #e8409e); }
+.btn.small { font-size: clamp(24px, 7vw, 34px); min-width: 0; padding: 10px 22px; }
+.panel { width: min(360px, 88vw); padding: 18px; border: 5px solid var(--ink); border-radius: 18px; background: rgba(54, 55, 122, 0.92); }
+.panel p { margin: 0; font-size: clamp(22px, 6vw, 30px); }
+.panel .row { display: flex; gap: 14px; }
+.btn small { display: block; font-size: 0.55em; }

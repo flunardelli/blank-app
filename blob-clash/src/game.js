@@ -14,8 +14,8 @@ import {
   startBlobsFor, sweepX, upgradeCost,
 } from './rules.js';
 import { createSequences } from './cheat.js';
-import { completeLevel } from './progress.js';
-import { loadSave, writeSave } from './save.js';
+import { completeLevel, hasProgress } from './progress.js';
+import { loadSave, resetSave, writeSave } from './save.js';
 
 const UPGRADES = [
   { id: 'damage', title: 'Damage', icon: '🥊' },
@@ -49,6 +49,27 @@ export class Game {
       if (cheats.feed(code, performance.now() / 1000) !== null) this.skipToBoss();
     });
     this.loadLevel(this.save.current);
+    this.showTitle();
+  }
+
+  // ---- Title screen -------------------------------------------------------------
+  // The level behind the title is already loaded, so Continue only has to reveal its menu.
+  showTitle() {
+    this.state = 'title';
+    this.hud.showTitle({
+      level: this.save.current,
+      hasProgress: hasProgress(this.save),
+      onContinue: () => this.leaveTitle(),
+      onNew: () => {
+        this.save = resetSave();
+        this.loadLevel(this.save.current);
+      },
+    });
+  }
+
+  leaveTitle() {
+    this.state = 'menu';
+    this.showMenu();
   }
 
   // ---- Level lifecycle ----------------------------------------------------------

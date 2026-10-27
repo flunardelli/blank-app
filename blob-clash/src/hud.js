@@ -11,7 +11,7 @@ export class Hud {
     this.topbar = $('topbar');
     this.progress = $('progress-fill');
     this.bubbles = $('bubbles');
-    this.screens = { menu: $('menu'), complete: $('complete'), lose: $('lose') };
+    this.screens = { title: $('title'), menu: $('menu'), complete: $('complete'), lose: $('lose') };
     this.pauseButton = $('pause-btn');
     this.pauseScreen = $('pause');
     this.keySlots = [...document.querySelectorAll('.key-slot')];
@@ -89,7 +89,7 @@ export class Hud {
 
   show(name) {
     Object.entries(this.screens).forEach(([key, el]) => { el.hidden = key !== name; });
-    this.topbar.classList.toggle('hidden-progress', name === 'menu');
+    this.topbar.classList.toggle('hidden-progress', name === 'menu' || name === 'title');
     this.pauseButton.hidden = name !== null; // only offered while a level is being played
   }
 
@@ -105,6 +105,24 @@ export class Hud {
   bindPause({ onPause, onResume }) {
     this.pauseButton.addEventListener('click', onPause);
     $('pause-resume').addEventListener('click', onResume);
+  }
+
+  /** First screen: Continue (or Play when there is nothing to continue) and New game, which asks before erasing. */
+  showTitle({ level, hasProgress, onContinue, onNew }) {
+    const confirm = $('title-confirm');
+    const buttons = $('title-buttons');
+    const ask = (asking) => {
+      confirm.hidden = !asking;
+      buttons.hidden = asking;
+    };
+    ask(false);
+    $('title-continue').innerHTML = hasProgress ? `CONTINUAR<small>FASE ${level}</small>` : 'JOGAR';
+    $('title-continue').onclick = onContinue;
+    $('title-new').hidden = !hasProgress;
+    $('title-new').onclick = () => ask(true);
+    $('title-confirm-no').onclick = () => ask(false);
+    $('title-confirm-yes').onclick = onNew;
+    this.show('title');
   }
 
   showMenu({ level, upgrades, onBuy }) {
