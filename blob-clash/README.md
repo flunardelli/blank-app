@@ -19,6 +19,7 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 - **Bonecos cinza** (fase 2+) andam de um lado para o outro; cada um que esbarra leva um blob junto. A partir da fase 4 aparecem os **brutamontes** (levam 5).
 - Cada fase tem um **obstáculo em destaque** (em ciclo: luvas/melancias, serras, bombas, pulo, armadilha, espinhos), então fases seguidas não se repetem.
 - **Multidões vermelhas** bloqueiam a pista: os dois lados se anulam um a um.
+- **Skins** (`src/skins.js`): o botão SKINS no menu abre a loja; skins se compram com moedas e vestem só o **líder da multidão** e o **campeão** da luta (o resto da multidão continua laranja). O catálogo é uma lista; os acessórios ficam em `src/art/skinModels.js`.
 - **Moedas** na pista e **uma chave por fase**. Com 3 chaves, abre um **baú** de moedas.
 - **Boss:** a multidão se funde num campeão de luvas, que abre a luta com um **soco voador**.
   **TAP TO FIGHT!**: cada toque é um jab; o 5º toque seguido vira **JUMP PUNCH** (2,5× de dano).

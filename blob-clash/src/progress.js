@@ -1,6 +1,7 @@
 // Pure save-data rules (no storage, no three.js) so they can be unit tested.
 import { CONFIG } from './config.js';
 import { LEVEL_COUNT } from './worlds.js';
+import { defaultSkins, normalizeSkins } from './skins.js';
 
 export const SAVE_VERSION = 3;
 
@@ -12,6 +13,7 @@ export const defaultSave = () => ({
   coins: 0,
   keys: 0,
   upgrades: { damage: 1, blobs: 1 },
+  skins: defaultSkins(),
 });
 
 export function starsFor(multiplier, [oneStarUpTo, twoStarsUpTo] = CONFIG.campaign.starsAt) {
@@ -77,5 +79,6 @@ export function normalizeSave(raw, levels = LEVEL_COUNT) {
       damage: Math.max(1, count(raw.upgrades?.damage)),
       blobs: Math.max(1, count(raw.upgrades?.blobs)),
     },
+    skins: normalizeSkins(raw.skins), // saves from before skins existed just get the default
   };
 }
