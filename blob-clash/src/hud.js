@@ -11,7 +11,7 @@ export class Hud {
     this.topbar = $('topbar');
     this.progress = $('progress-fill');
     this.bubbles = $('bubbles');
-    this.screens = { title: $('title'), map: $('map'), menu: $('menu'), complete: $('complete'), lose: $('lose') };
+    this.screens = { title: $('title'), ending: $('ending'), map: $('map'), menu: $('menu'), complete: $('complete'), lose: $('lose') };
     this.pauseButton = $('pause-btn');
     this.pauseScreen = $('pause');
     this.keySlots = [...document.querySelectorAll('.key-slot')];
@@ -171,15 +171,24 @@ export class Hud {
     $('map-rows').querySelector('.current')?.scrollIntoView({ block: 'center' });
   }
 
-  showComplete({ level, coins, multiplier, chest, onNext }) {
+  showComplete({ level, coins, multiplier, chest, onNext, onMap }) {
     $('complete-level').textContent = `Level ${level}`;
     $('complete-chest').hidden = !chest;
     $('complete-chest').querySelector('span').textContent = `Chest +${chest}`;
     $('complete-coins').textContent = coins;
     $('complete-multiplier').textContent = `x${multiplier.toFixed(1)}`;
     $('complete-next').onclick = onNext;
+    $('complete-map').onclick = onMap;
     this.show('complete');
     this.confetti();
+  }
+
+  showEnding({ stars, maxStars, onMap, onTitle }) {
+    $('ending-stars').textContent = `${stars}/${maxStars}`;
+    $('ending-map').onclick = onMap;
+    $('ending-title').onclick = onTitle;
+    this.show('ending');
+    this.confetti('ending-confetti');
   }
 
   showLose({ coins, onContinue }) {
@@ -192,8 +201,8 @@ export class Hud {
     this.show(null);
   }
 
-  confetti() {
-    const layer = $('confetti');
+  confetti(layerId = 'confetti') {
+    const layer = $(layerId);
     const colors = ['#ff4d6d', '#4dabf7', '#51cf66', '#ffd43b', '#9775fa', '#22d3ee'];
     layer.replaceChildren(...Array.from({ length: 70 }, () => {
       const piece = document.createElement('i');

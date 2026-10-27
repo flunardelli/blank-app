@@ -14,8 +14,9 @@ import {
   startBlobsFor, sweepX, upgradeCost,
 } from './rules.js';
 import { createSequences } from './cheat.js';
-import { completeLevel, hasProgress } from './progress.js';
+import { completeLevel, hasProgress, totalStars } from './progress.js';
 import { mapRows } from './map.js';
+import { LEVEL_COUNT } from './worlds.js';
 import { loadSave, resetSave, writeSave } from './save.js';
 
 const UPGRADES = [
@@ -597,7 +598,19 @@ export class Game {
     this.hud.setKeys(this.save.keys);
     this.hud.showComplete({
       level: this.level.level, coins: reward, multiplier: this.multiplier, chest,
-      onNext: () => this.loadLevel(this.save.current),
+      onNext: () => (this.level.level >= LEVEL_COUNT ? this.showEnding() : this.loadLevel(this.save.current)),
+      onMap: () => this.openMap(),
+    });
+  }
+
+  // After the last level: the whole campaign is beaten.
+  showEnding() {
+    this.state = 'ending';
+    this.hud.showEnding({
+      stars: totalStars(this.save),
+      maxStars: LEVEL_COUNT * 3,
+      onMap: () => this.openMap(() => this.showEnding()),
+      onTitle: () => this.showTitle(),
     });
   }
 

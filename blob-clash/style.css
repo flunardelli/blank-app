@@ -132,8 +132,8 @@ h1.stacked .big { font-size: 1.2em; }
 .btn.cyan { background: linear-gradient(#3fe0ff, #10b7f2); }
 .btn:active { transform: translateY(4px); box-shadow: 0 3px 0 var(--ink); }
 
-#confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-#confetti i { position: absolute; top: -20px; width: 10px; height: 22px; border-radius: 5px; animation: fall linear forwards; }
+#confetti, .confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.confetti i { position: absolute; top: -20px; width: 10px; height: 22px; border-radius: 5px; animation: fall linear forwards; }
 @keyframes fall { to { transform: translateY(110vh) rotate(var(--spin)); } }
 
 /* ---- Pause ---- */
