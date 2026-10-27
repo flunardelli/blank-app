@@ -5,8 +5,10 @@ import { CONFIG, PALETTE } from './config.js';
 import { Effects } from './effects.js';
 import { generateLevel } from './level.js';
 import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './levelView.js';
-import { Animator, clipDuration } from './anim.js';
-import { applyPose, setGlow } from './art/boxer.js';
+import { clipDuration } from './anim.js';
+import { AnimPlayer, clipLibrary } from './animPlayer.js';
+import { BOSS_BODY, CHAMPION_BODY } from './art/bodySpecs.js';
+import { setGlow } from './art/boxer.js';
 import { bossForLevel } from './bosses.js';
 import {
   attackStats, BOSS_MOVES, CHAMPION_MOVES, CHARGE, GUARD, GUARD_UP, idlePose, KNOCKED_OUT, REACTIONS, RELAX, STAGGERED,
@@ -44,7 +46,7 @@ export class Game {
     this.effects = new Effects(world.scene);
     this.player = createPlayerCrowd(world.scene);
     this.champion = createPlayerChampion();
-    this.championAnim = new Animator(GUARD);
+    this.championAnim = new AnimPlayer(GUARD);
     world.scene.add(this.champion.root);
     this.time = 0;
     this.view = null;
@@ -58,6 +60,8 @@ export class Game {
     });
     this.loadLevel(this.save.current);
     this.showTitle();
+    // The animator-made clips arrive a little after the first frame; until then (or if they fail) the keyframed moves play.
+    clipLibrary.load([BOSS_BODY, CHAMPION_BODY]).catch((error) => console.warn('Retargeted clips unavailable:', error));
   }
 
   // ---- Title screen -------------------------------------------------------------
@@ -111,8 +115,8 @@ export class Game {
     this.level = generateLevel(levelNumber);
     this.boss = bossForLevel(levelNumber);
     this.bossAttack = attackStats(this.boss.attack);
-    this.bossAnim = new Animator(GUARD);
-    this.championAnim = new Animator(GUARD);
+    this.bossAnim = new AnimPlayer(GUARD);
+    this.championAnim = new AnimPlayer(GUARD);
     this.brain = null;
     this.guarding = false;
     this.hitStop = 0;
@@ -724,17 +728,26 @@ export class Game {
     const from = rig.anchor.clone();
     const to = new THREE.Vector3(0, 0.25, toZ(this.level.ladderStart + tile.d));
     const height = 3 + (from.z - to.z) * 0.06;
-    this.championAnim.play(CHAMPION_MOVES.cheer, { hold: true });
+    // The animators' clips when loaded: a thumbs-up for the champion, and the boss lands on its feet and
+    // collapses with their death clip. Without them the keyframed cheer plays and the boss lands flat.
+    const collapses = Boolean(clipLibrary.get(rig.body.spec, 'Death'));
+    this.championAnim.playClip('ThumbsUp', { loop: true, hold: true, fallback: CHAMPION_MOVES.cheer });
     this.bossAnim.play(KNOCKED_OUT, { hold: true });
     this.effects.impact(new THREE.Vector3(0, 4, from.z), { stars: 10, scale: 1.8 });
     this.effects.shake = 1;
     this.effects.tween(1.4 + (from.z - to.z) * 0.012, (k) => {
       rig.anchor.lerpVectors(from, to, k);
       rig.anchor.y += Math.sin(k * Math.PI) * height;
-      boss.rotation.x = -k * Math.PI * 3;
+      boss.rotation.x = -k * Math.PI * (collapses ? 4 : 3);
     }, () => {
-      boss.rotation.x = -Math.PI / 2; // KO: flat on its back
-      rig.anchor.y = 0.6;
+      if (collapses) {
+        boss.rotation.x = 0;
+        rig.anchor.y = to.y;
+        this.bossAnim.playClip('Death', { hold: true, fallback: KNOCKED_OUT });
+      } else {
+        boss.rotation.x = -Math.PI / 2; // KO: flat on its back
+        rig.anchor.y = 0.6;
+      }
       tile.tile.material.color.set(0x7cf05a);
       // Cartoon landing: a dust ring and a burst of stars (no splatter).
       this.effects.dustRing(new THREE.Vector3(to.x, 0.5, to.z), 3);
@@ -806,15 +819,17 @@ export class Game {
     this.animateBoxers(dt);
   }
 
-  // Both boxers bounce in guard and play their clips; calmer before the bell.
+  // Both boxers bounce in guard and play their clips; before the bell the boss idles with the animators' clip.
   animateBoxers(dt) {
-    const energy = this.state === 'boxing' ? 1 : 0.35;
+    const fighting = this.state === 'boxing';
+    const energy = fighting ? 1 : 0.35;
+    const ambient = fighting ? null : 'Idle';
     if (this.view.boss) {
-      const speed = this.state === 'boxing' && this.brain ? bossSpeed(this.brain) : 1; // an enraged boss moves faster
-      applyPose(this.view.boss, this.bossAnim.update(dt * speed, idlePose(this.time, energy)));
+      const speed = fighting && this.brain ? bossSpeed(this.brain) : 1; // an enraged boss moves faster
+      this.bossAnim.drive(this.view.boss, dt * speed, idlePose(this.time, energy), ambient);
     }
     if (this.champion.root.visible) {
-      applyPose(this.champion, this.championAnim.update(dt, idlePose(this.time, energy, 1.7)));
+      this.championAnim.drive(this.champion, dt, idlePose(this.time, energy, 1.7), ambient);
     }
     this.cameraKick = Math.max(0, this.cameraKick - dt * 3);
   }

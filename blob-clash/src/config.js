@@ -242,6 +242,27 @@ export const CONFIG = {
     gravity: 16,
     camera: { sideRadius: 18, frontRadius: 9, sideHeight: 6.5, frontHeight: 5.5, lookY: 2.4, lookLead: 1.8 },
   },
+  // Skinned jelly fighters (art/character.js): the body is one smooth mesh sampled from a blend of
+  // capsules and ellipsoids (art/bodySdf.js), bent by bones named like the RobotExpressive skeleton.
+  character: {
+    bindSpread: 0.45, // rad: arms hang this far outwards in the bind pose so they do not melt into the chest
+    cell: 0.035, // mesh resolution, rig units (smaller = smoother but slower to build at startup)
+    blend: 0.045, // how far neighbouring parts melt into each other
+    softness: 0.05, // how wide the gelatin bend around a joint is
+    influences: 4, // bones per vertex
+    blendSeconds: 0.15, // crossfade between a keyframed pose and a retargeted clip, or two clips
+    clipFile: 'assets/anim/RobotExpressive.glb', // CC0, Quaternius (three.js examples)
+    clips: ['Idle', 'Running', 'Punch', 'Death', 'Dance', 'ThumbsUp', 'Wave', 'Jump'],
+    // Seconds into the retargeted Punch at which the fist lands; the clip is sped up or slowed down so
+    // that this frame meets the move's `hits` time.
+    clipImpact: { Punch: 0.3 },
+    // Springs that let the body lag behind its bones and wobble when they stop: [stiffness, damping] per bone.
+    wobble: {
+      Abdomen: [260, 14], Torso: [220, 12], Head: [180, 10],
+      UpperArmL: [300, 16], UpperArmR: [300, 16], LowerArmL: [300, 16], LowerArmR: [300, 16],
+    },
+    wobbleMaxStep: 1 / 40, // seconds: bigger frame gaps are split so the springs stay stable
+  },
   reward: { base: 50, perLevel: 10 },
   upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
 };

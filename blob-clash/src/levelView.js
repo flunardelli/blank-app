@@ -279,6 +279,7 @@ export function buildLevelView(scene, level, theme) {
       root.traverse((object) => {
         if (!object.isMesh || Object.values(shared).includes(object.geometry)) return;
         object.geometry.dispose();
+        object.skeleton?.dispose();
       });
     },
   };

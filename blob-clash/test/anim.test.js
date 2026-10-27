@@ -66,3 +66,15 @@ test('a boss move finishes before its next attack starts', () => {
     assert.ok(clipDuration(BOSS_MOVES[attack.move]) <= attack.interval, `${id}: ${attack.move} overlaps the next attack`);
   }
 });
+
+test('the animator reports what running reactions add to the pose, so other players can layer them', () => {
+  const anim = new Animator(base);
+  assert.deepEqual(anim.offset, {});
+  anim.react({ keys: [[0, {}], [0.1, { b: 12 }, 'linear'], [0.2, {}, 'linear']] });
+  anim.update(0.1);
+  assert.equal(anim.offset.b, 2);
+  anim.update(0.2);
+  assert.equal(anim.offset.b ?? 0, 0, 'back to nothing as the reaction ends');
+  anim.update(0.1);
+  assert.deepEqual(anim.offset, {});
+});

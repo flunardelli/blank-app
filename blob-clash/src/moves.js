@@ -11,7 +11,8 @@
 //   dash, lift        whole-body travel towards the opponent and up, in world units
 //
 // Clip fields: keys (see anim.js), hits = seconds at which a punch lands, weight = how hard
-// each hit reads (effects, shake). Every clip starts and ends in GUARD, so moves chain cleanly.
+// each hit reads (effects, shake), retarget = optional name of a clip from the RobotExpressive model
+// (CONFIG.character.clips) that stands in for the keyframes once loaded. Every clip starts and ends in GUARD, so moves chain cleanly.
 import { mirrorClip } from './anim.js';
 
 export const GUARD = {
@@ -52,8 +53,9 @@ const jabLeft = (at, options) => mirrorClip({ keys: jabRight(at, options) }).key
 
 // ---- Boss moves (bosses.js picks one per boss) ------------------------------------
 export const BOSS_MOVES = {
-  // Quick straight right: small shoulder cock, snap, recoil.
-  jab: { weight: 1, hits: [0.32], keys: [[0, {}], ...jabRight(0.32, { cock: 0.24 })] },
+  // Quick straight right: small shoulder cock, snap, recoil. Once loaded, the animators' Punch clip plays
+  // instead (`retarget`), sped up or slowed down so its impact frame lands on `hits`.
+  jab: { weight: 1, hits: [0.32], retarget: 'Punch', keys: [[0, {}], ...jabRight(0.32, { cock: 0.24 })] },
 
   // Haymaker: leans way back with the arm wide, steps in and swings through, overshoots.
   heavy: {

@@ -60,6 +60,7 @@ export class Animator {
     this.action = null;
     this.reactions = [];
     this.pose = { ...base };
+    this.offset = {}; // what the running reactions added to the pose last frame, per channel
   }
 
   play(clip, { hold = false } = {}) {
@@ -90,11 +91,16 @@ export class Animator {
       pose = blendPose(idle, blendPose(action.from, sampled, fadeIn), fadeOut);
       if (action.t >= duration && !action.hold) this.action = null;
     }
+    this.offset = {};
     this.reactions = this.reactions.filter((reaction) => {
       reaction.t += dt;
       const sampled = sampleClip(reaction.clip, reaction.t, this.base);
       pose = { ...pose };
-      for (const channel in sampled) pose[channel] += sampled[channel] - this.base[channel];
+      for (const channel in sampled) {
+        const delta = sampled[channel] - this.base[channel];
+        pose[channel] += delta;
+        this.offset[channel] = (this.offset[channel] ?? 0) + delta;
+      }
       return reaction.t < clipDuration(reaction.clip);
     });
     this.pose = pose;

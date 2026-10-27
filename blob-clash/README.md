@@ -48,9 +48,21 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 
   Golpes diferentes, mesmo dano médio por segundo (coberto por teste); adicionar um chefe é adicionar uma linha.
 - **Animação dos golpes** (`src/moves.js`): cada golpe é uma coreografia em keyframes (preparação, impacto,
-  recuperação), tocada sobre bonecos articulados (`src/art/boxer.js`: ombro, cotovelo, pernas, cabeça).
-  O dano cai no quadro em que o soco encosta, golpes fortes têm *hit stop* e a câmera dá um tranco.
+  recuperação). O dano cai no quadro em que o soco encosta, golpes fortes têm *hit stop* e a câmera dá um tranco.
   O motor de keyframes (`src/anim.js`) não depende do three.js e tem testes próprios.
+- **Lutadores com esqueleto** (`src/art/character.js`, `bodySdf.js`, `bodySpecs.js`): o campeão e os chefes são uma
+  **malha contínua** de gelatina (cápsulas e elipsoides fundidos num campo de distância e triangulados em código),
+  ligada a ossos com os nomes do RobotExpressive (`Hips`, `Torso`, `Neck`, `Head`, `UpperArmL`, `LowerArmL`, `UpperLegL`…).
+  O braço dobra sem emenda; luvas, botas, rosto e capacete são peças rígidas presas aos ossos. Resolução, maciez da dobra e
+  mola em `CONFIG.character`.
+- **Clipes do animador** (`src/art/retarget.js`, `src/animPlayer.js`): `assets/anim/RobotExpressive.glb` (Quaternius, CC0, o mesmo
+  do repositório do three.js) traz 14 animações feitas por animador. O jogo carrega o arquivo logo depois do primeiro quadro e
+  transfere os clipes de `CONFIG.character.clips` para o nosso esqueleto com `SkeletonUtils.retargetClip`: *Idle* antes do
+  gongo, *ThumbsUp* na comemoração do campeão, *Death* no nocaute do chefe, *Punch* no jab do ROOKIE (acelerado ou
+  desacelerado para o quadro do impacto cair em `hits`), *Dance*, *Wave*, *Running* e *Jump* prontos para quem quiser usar.
+  O `AnimPlayer` troca entre clipes e golpes de `moves.js` com mistura de 0,15 s (sem pulo de pose) e põe molas de
+  gelatina no tronco, na cabeça e nos antebraços: o corpo atrasa em relação aos ossos e balança ao parar. Se o arquivo não
+  carregar, tudo continua funcionando só com os keyframes de `moves.js`.
 - A vida que sobrar decide até onde o Boss voa na pista **x1.0 … x5.0**, que multiplica as moedas.
 - Moedas compram upgrades no menu: **Damage** (força do soco) e **Blobs** (tamanho inicial).
 
@@ -63,7 +75,7 @@ python3 -m http.server 8000   # ou: npm start
 # abra http://localhost:8000
 ```
 
-Testes (Node 18+): `npm test`
+Testes (Node 22): `npm test` (os testes que usam o three.js resolvem `three` com `test/support/register.mjs`)
 
 ## Arquitetura
 
@@ -75,17 +87,20 @@ Testes (Node 18+): `npm test`
 | `src/rules.js` | Regras puras: portões, formação da multidão, colisões, briga, Boss, bônus, upgrades | não |
 | `src/level.js` | Gera a fase como **dados** (portões, obstáculos, moedas, inimigos, Boss) | não |
 | `src/art/textures.js` | Texturas desenhadas em canvas (água, listras, texto com contorno, respingos) | sim |
-| `src/art/models.js` | Modelos procedurais: bonequinho de gelatina, Boss, melancia, espinhos, ringue, escada de bônus | sim |
+| `src/art/models.js` | Modelos procedurais: bonequinho de gelatina, melancia, espinhos, ringue, escada de bônus | sim |
+| `src/art/bodySdf.js`, `bodySpecs.js` | Corpo de gelatina contínuo: campo de distância, triangulação e pesos de pele; esqueleto dos dois corpos | não |
+| `src/art/character.js`, `boxer.js`, `retarget.js` | Malha com esqueleto, acessórios dos lutadores e transferência dos clipes do robô | sim |
+| `src/animPlayer.js` | Mistura de clipes e golpes, molas de gelatina | sim |
 | `src/art/hazards.js` | Serra com trilho, machado pendular, rampa de pulo, bomba | sim |
 | `src/crowd.js` | Multidão como um único `InstancedMesh` | sim |
 | `src/levelView.js` | Converte os dados da fase em objetos 3D | sim |
 | `src/game.js` | Máquina de estados `menu → running ⇄ skirmish → merge → boxing → bonus → complete / lost` | sim |
 | `src/effects.js`, `hud.js`, `input.js`, `save.js`, `world.js` | Efeitos, UI em DOM, input, progresso salvo, cenário | sim |
 
-Não há nenhum arquivo de imagem: toda a arte é gerada por código.
+Não há nenhum arquivo de imagem: toda a arte é gerada por código (a única exceção são os clipes de animação do `assets/anim/`).
 
 A vida do Boss vem da **maior multidão possível** na fase (escolhendo sempre o melhor portão e
 descontando os inimigos), multiplicada por uma dificuldade que sobe de 40% a 90% com o nível.
 Um teste garante que, com a melhor multidão, a luta pede no máximo 6 toques/s (e ≤ 3 na fase 1).
 
-Dependências versionadas em `vendor/`: three.js 0.169.0 (MIT) e a fonte Fredoka (OFL).
+Dependências versionadas em `vendor/`: three.js 0.169.0 (MIT, com os addons `GLTFLoader`, `SkeletonUtils` e `BufferGeometryUtils`) e a fonte Fredoka (OFL).
