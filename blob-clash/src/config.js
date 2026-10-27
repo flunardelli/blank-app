@@ -240,7 +240,7 @@ export const CONFIG = {
     coinFloor: 0.3, // coins vanish once they land (the floor leaves nothing behind)
     coinVanish: 0.2,
     gravity: 16,
-    camera: { sideRadius: 15, frontRadius: 9, sideHeight: 6, frontHeight: 5.5, lookY: 2.4, lookLead: 3 },
+    camera: { sideRadius: 18, frontRadius: 9, sideHeight: 6.5, frontHeight: 5.5, lookY: 2.4, lookLead: 1.8 },
   },
   reward: { base: 50, perLevel: 10 },
   upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
