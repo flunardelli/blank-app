@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { axeIsLow, ballState, pusherGap } from '../src/rules.js';
 import { DOUBLE_ROW_GAP, generateLevel, hazardWeights } from '../src/level.js';
 import { CONFIG } from '../src/config.js';
 import { bossDifficulty, isGoodGate, requiredTapRate } from '../src/rules.js';
 import { WORLDS } from '../src/worlds.js';
+import { bossForLevel } from '../src/bosses.js';
 
 const HUMAN_TAPS_PER_SECOND = 6;
 
@@ -100,6 +102,82 @@ test('bomb rows alternate sides and leave room for the biggest crowd', () => {
   }
 });
 
+test('axes are raised long enough for the biggest crowd to cross, and stay out of the early worlds', () => {
+  const { forwardSpeed, maxRadius } = CONFIG.crowd;
+  const crossing = (2 * maxRadius) / forwardSpeed; // seconds the largest crowd takes to cross the axe line
+  const axes = [];
+  for (let n = 1; n <= 30; n++) {
+    const found = generateLevel(n).obstacles.filter((o) => o.kind === 'axe');
+    if (n < CONFIG.obstacle.unlockLevel.axe) assert.equal(found.length, 0, `level ${n}: axe too early`);
+    axes.push(...found);
+  }
+  assert.ok(axes.length > 0, 'axes show up in the campaign');
+  for (const axe of axes) {
+    // Sample a full period: the longest raised stretch must cover the crossing, and the blade must stay
+    // narrower than the track so the crowd can always slip past the low blade.
+    const period = (2 * Math.PI) / axe.speed;
+    let raised = 0;
+    let longest = 0;
+    for (let t = 0; t < 2 * period; t += 0.01) {
+      raised = axeIsLow(axe, t) ? 0 : raised + 0.01;
+      longest = Math.max(longest, raised);
+    }
+    assert.ok(longest > crossing * 1.5, `axe at ${axe.d}: raised window too short`);
+    assert.ok(2 * (axe.halfWidth + CONFIG.crowd.unitRadius) < CONFIG.track.width / 2);
+    assert.ok(axe.length * Math.sin(axe.swing) >= CONFIG.track.width / 2 - 1, 'swings edge to edge');
+  }
+});
+
+test('pillars and pushers never close the track to the largest crowd, and wait for their worlds', () => {
+  const { maxRadius, unitRadius } = CONFIG.crowd;
+  const widest = 2 * (maxRadius + unitRadius); // diameter of the biggest crowd, bodies included
+  const half = CONFIG.track.width / 2;
+  let pillars = 0;
+  let pushers = 0;
+  for (let n = 1; n <= 30; n++) {
+    for (const o of generateLevel(n).obstacles) {
+      if (o.kind !== 'pillars' && o.kind !== 'pusher') continue;
+      assert.ok(n >= CONFIG.obstacle.unlockLevel[o.kind], `level ${n}: ${o.kind} too early`);
+      if (o.kind === 'pillars') {
+        pillars++;
+        const [left, right] = [...o.pads].sort((a, b) => a.x - b.x);
+        assert.ok((right.x - right.halfWidth) - (left.x + left.halfWidth) >= widest, `level ${n}: pillar gap too small`);
+        assert.ok(o.pads.every((p) => Math.abs(p.x) + p.halfWidth <= half + 1e-9), `level ${n}: pillar off the track`);
+      } else {
+        pushers++;
+        for (let t = 0; t < 2 * Math.PI / o.speed; t += 0.02) {
+          assert.ok(pusherGap(o, t) >= widest, `level ${n}: pusher closes the track`);
+        }
+      }
+    }
+  }
+  assert.ok(pillars > 0 && pushers > 0, 'both hazards show up in the campaign');
+});
+
+test('balls come from world 4 on and never fill all three lanes at the same time', () => {
+  const { lanes } = CONFIG.track;
+  const { radius } = CONFIG.obstacle.ball;
+  let found = 0;
+  for (let n = 1; n <= 30; n++) {
+    const balls = generateLevel(n).obstacles.filter((o) => o.kind === 'ball');
+    if (n < CONFIG.obstacle.unlockLevel.ball) assert.equal(balls.length, 0, `level ${n}: ball too early`);
+    found += balls.length;
+    const groups = Map.groupBy(balls, (b) => b.d);
+    for (const group of groups.values()) {
+      assert.ok(group.length < lanes.length, 'a group never has a ball for every lane');
+      assert.equal(new Set(group.map((b) => b.x)).size, group.length, 'one ball per lane');
+      const period = (2 * group[0].span) / group[0].speed + group[0].fallTime + group[0].waitTime;
+      for (let t = 0; t < 2 * period; t += 0.02) {
+        const rolling = group.filter((b) => ballState(b, t).phase === 'roll');
+        const covered = lanes.filter((x) => rolling.some((b) => Math.abs(b.x - x) < radius + CONFIG.crowd.unitRadius));
+        assert.ok(covered.length < lanes.length, `level ${n} t=${t}: every lane blocked`);
+        assert.ok(rolling.length <= 1, 'balls of a group roll in turns');
+      }
+    }
+  }
+  assert.ok(found > 0, 'balls show up in the campaign');
+});
+
 test('hazards unlock gradually and every world features its own kind', () => {
   assert.deepEqual(Object.keys(hazardWeights(1)).sort(), ['slider', 'spikes', 'trap']);
   assert.ok('saw' in hazardWeights(2) && !('bombs' in hazardWeights(2)));
@@ -160,6 +238,22 @@ test('with the best crowd the boss needs a humane tapping speed on every level',
   assert.ok(requiredTapRate(first.bestCount, first.boss.hp, 1) <= 1.5, 'level 1 is gentle');
 });
 
+test('worlds 1 and 2 stay winnable by tapping alone, even against a guard', () => {
+  // Dodging is never needed. The guard is the one mechanic that slows a tapper down: it muffles jabs while
+  // it is up (everything but the open time after each attack), but not the flying jump punch.
+  const { guardMultiplier, guardOpenSeconds, finisherEvery, jumpPunchMultiplier } = CONFIG.boxing;
+  for (let n = 1; n <= 6; n++) {
+    const { boss, bestCount } = generateLevel(n);
+    const { attack, mechanics } = bossForLevel(n);
+    const guardUp = mechanics.includes('guard') ? Math.max(0, attack.interval - guardOpenSeconds) / attack.interval : 0;
+    const jab = guardUp * guardMultiplier + (1 - guardUp);
+    const perTap = ((finisherEvery - 1) * jab + jumpPunchMultiplier) / finisherEvery;
+    const rate = requiredTapRate(bestCount, boss.hp, 1) / perTap;
+    assert.ok(rate <= HUMAN_TAPS_PER_SECOND, `level ${n}: needs ${rate.toFixed(1)} taps/s`);
+  }
+  for (let n = 1; n <= 3; n++) assert.deepEqual(bossForLevel(n).mechanics, [], 'world 1 is plain punches');
+});
+
 test('boss strength rises through each world and eases off when the next one starts', () => {
   // Boss HP follows the best crowd, which depends on the gate rolls, so compare the HP share of that crowd.
   const strength = (n) => bossDifficulty(n);
@@ -169,4 +263,39 @@ test('boss strength rises through each world and eases off when the next one sta
     if (w > 0) assert.ok(a < strength(w * 3), `world ${w + 1} starts with a breather`);
   }
   for (let w = 1; w < 10; w++) assert.ok(strength(w * 3 + 2) > strength((w - 1) * 3 + 2), 'each world boss beats the previous one');
+});
+
+test('bestCount includes the recruits: a one-segment level gains exactly their number', () => {
+  const oneSegment = { ...CONFIG, track: { ...CONFIG.track, minSegments: 1, maxSegments: 1 } };
+  for (const n of [1, 5, 12, 30]) {
+    const plain = generateLevel(n, { ...oneSegment, recruits: { ...CONFIG.recruits, chance: 0 } });
+    const level = generateLevel(n, { ...oneSegment, recruits: { ...CONFIG.recruits, chance: 1 } });
+    assert.ok(level.recruits.length > 0);
+    assert.equal(level.bestCount, plain.bestCount + level.recruits.length, `level ${n}`);
+  }
+});
+
+test('sleeping recruits: groups of 1-5 inside the track, without reshuffling the level', () => {
+  const { perGroupMin, perGroupMax } = CONFIG.recruits;
+  const half = CONFIG.track.width / 2;
+  const sizes = new Set();
+  const without = { ...CONFIG, recruits: { ...CONFIG.recruits, chance: 0 } };
+  for (let n = 1; n <= 30; n++) {
+    const level = generateLevel(n);
+    const plain = generateLevel(n, without);
+    assert.deepEqual(plain.gates, level.gates, `level ${n}: recruits must not reshuffle the gates`);
+    assert.equal(plain.recruits.length, 0);
+    assert.ok(level.recruits.length > 0, `level ${n}: no recruits`);
+    assert.ok(level.recruits.every((r) => Math.abs(r.x) + r.radius < half && r.d > 0 && r.d < level.finishD));
+    // Groups are told apart by their distance to the previous recruit.
+    const groups = level.recruits.reduce((acc, r) => {
+      const last = acc.at(-1);
+      if (last && r.d - last.at(-1).d < CONFIG.recruits.slotSpacing * 2 && Math.abs(r.x - last.at(-1).x) < CONFIG.recruits.slotSpacing * 2.1) last.push(r);
+      else acc.push([r]);
+      return acc;
+    }, []);
+    groups.forEach((g) => sizes.add(g.length));
+    assert.ok(groups.every((g) => g.length >= perGroupMin && g.length <= perGroupMax));
+  }
+  assert.ok(sizes.has(1) && sizes.has(perGroupMax), `group sizes seen: ${[...sizes]}`);
 });

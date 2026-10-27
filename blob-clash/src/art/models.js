@@ -201,11 +201,22 @@ export function createKey() {
 }
 
 const coinGeometry = new THREE.CylinderGeometry(0.42, 0.42, 0.1, 28).rotateX(Math.PI / 2);
-export function createCoin() {
+const coinMaterials = () => {
   const face = new THREE.MeshStandardMaterial({ map: coinFaceTexture(), metalness: 0.3, roughness: 0.3 });
-  const coin = new THREE.Mesh(coinGeometry, [glossy(0xe0a000, { metalness: 0.4 }), face, face]);
+  return [glossy(0xe0a000, { metalness: 0.4 }), face, face];
+};
+export function createCoin() {
+  const coin = new THREE.Mesh(coinGeometry, coinMaterials());
   coin.castShadow = true;
   return coin;
+}
+
+/** `count` coins drawn in one call; the caller writes each instance matrix. */
+export function createCoinSwarm(count) {
+  const swarm = new THREE.InstancedMesh(coinGeometry, coinMaterials(), count);
+  swarm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  swarm.frustumCulled = false;
+  return swarm;
 }
 
 // ---- Track pieces ---------------------------------------------------------------
@@ -215,21 +226,21 @@ export function textPlane(text, height, options) {
   return new THREE.Mesh(new THREE.PlaneGeometry(height * texture.userData.aspect, height), material);
 }
 
-export function createTrack(fromD, toD) {
+export function createTrack(fromD, toD, theme) {
   const { width } = CONFIG.track;
   const length = toD - fromD;
-  const texture = stripeTexture().clone();
+  const texture = stripeTexture(theme?.track).clone();
   texture.repeat.set(1, length / 5);
   texture.needsUpdate = true;
   const group = new THREE.Group();
   const top = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.85 });
-  const side = new THREE.MeshStandardMaterial({ color: 0xd9d2f2, roughness: 0.8 });
+  const side = new THREE.MeshStandardMaterial({ color: theme?.side ?? 0xd9d2f2, roughness: 0.8 });
   const deck = new THREE.Mesh(new THREE.BoxGeometry(width, 1.2, length), [side, side, top, side, side, side]);
   deck.position.set(0, -0.6, -(fromD + length / 2));
   deck.receiveShadow = true;
   group.add(deck);
 
-  const railMaterial = glossy(PALETTE.rail);
+  const railMaterial = glossy(theme?.rail ?? PALETTE.rail);
   for (const x of [-width / 2 - 0.2, width / 2 + 0.2]) {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, length), railMaterial);
     rail.position.set(x, 0.05, deck.position.z);

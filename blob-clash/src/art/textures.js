@@ -23,23 +23,23 @@ const cached = (key, build) => {
   return cache.get(key);
 };
 
-export const stripeTexture = () => cached('stripes', () => {
+export const stripeTexture = ([light, dark] = [PALETTE.trackLight, PALETTE.trackDark]) => cached(`stripes:${light}:${dark}`, () => {
   const [canvas, ctx] = makeCanvas(8, 64);
-  ctx.fillStyle = PALETTE.trackLight;
+  ctx.fillStyle = light;
   ctx.fillRect(0, 0, 8, 64);
-  ctx.fillStyle = PALETTE.trackDark;
+  ctx.fillStyle = dark;
   ctx.fillRect(0, 0, 8, 28);
   return toTexture(canvas, { repeat: true });
 });
 
 // Worley-noise caustics (distance to 2nd nearest minus nearest cell point) that tile seamlessly.
-export const waterTexture = () => cached('water', () => {
+export const waterTexture = ([baseColor, lineColor] = [PALETTE.waterBase, PALETTE.waterLine]) => cached(`water:${baseColor}:${lineColor}`, () => {
   const size = 256;
   const [canvas, ctx] = makeCanvas(size, size);
   const points = Array.from({ length: 22 }, () => [Math.random() * size, Math.random() * size]);
   const image = ctx.createImageData(size, size);
-  const base = new THREE.Color(PALETTE.waterBase);
-  const line = new THREE.Color(PALETTE.waterLine);
+  const base = new THREE.Color(baseColor);
+  const line = new THREE.Color(lineColor);
   const out = new THREE.Color();
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -62,12 +62,12 @@ export const waterTexture = () => cached('water', () => {
   return toTexture(canvas, { repeat: true });
 });
 
-export const skyTexture = () => cached('sky', () => {
+export const skyTexture = ([top, horizon] = [PALETTE.skyTop, PALETTE.skyHorizon]) => cached(`sky:${top}:${horizon}`, () => {
   const [canvas, ctx] = makeCanvas(2, 256);
   const gradient = ctx.createLinearGradient(0, 0, 0, 256);
-  gradient.addColorStop(0, PALETTE.skyTop);
-  gradient.addColorStop(0.75, PALETTE.skyHorizon);
-  gradient.addColorStop(1, PALETTE.skyHorizon);
+  gradient.addColorStop(0, top);
+  gradient.addColorStop(0.75, horizon);
+  gradient.addColorStop(1, horizon);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 2, 256);
   return toTexture(canvas);
@@ -148,6 +148,27 @@ export const melonFaceTexture = () => cached('melon', () => {
     ctx.restore();
   }
   return toTexture(canvas);
+});
+
+export const woodTexture = () => cached('wood', () => {
+  const [canvas, ctx] = makeCanvas(256, 256);
+  const planks = ['#9a5a2a', '#8c4f24', '#a3622f', '#905326'];
+  planks.forEach((color, i) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(0, i * 64, 256, 64);
+    ctx.strokeStyle = 'rgba(60,28,8,0.35)'; // grain
+    ctx.lineWidth = 2;
+    for (let g = 0; g < 4; g++) {
+      const y = i * 64 + 10 + g * 15;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.bezierCurveTo(80, y - 4, 170, y + 5, 256, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(40,18,4,0.7)'; // plank gap
+    ctx.fillRect(0, i * 64, 256, 3);
+  });
+  return toTexture(canvas, { repeat: true });
 });
 
 export const coinFaceTexture = () => cached('coin', () => {

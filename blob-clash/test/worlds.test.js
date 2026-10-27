@@ -33,7 +33,7 @@ test('bossForLevel reads the world: smaller coloured mini boss on level 1, world
   for (const [i, world] of WORLDS.entries()) {
     const [mini, boss, chest] = [1, 2, 3].map((slot) => bossForLevel(i * 3 + slot));
     assert.equal(boss.id, world.boss);
-    assert.equal(chest.id, world.boss, 'chest levels fall back to the world boss until the chest stage exists');
+    assert.equal(chest.id, world.boss, 'chest levels have no fight and answer with the world boss');
     assert.equal(mini.id, world.mini);
     assert.deepEqual(mini.colors, world.tint);
     const base = BOSSES.find((b) => b.id === world.mini);
@@ -44,4 +44,18 @@ test('bossForLevel reads the world: smaller coloured mini boss on level 1, world
 
 test('neighbouring worlds never share a world boss', () => {
   for (let i = 1; i < WORLDS.length; i++) assert.notEqual(WORLDS[i].boss, WORLDS[i - 1].boss);
+});
+
+test('every world has a complete, distinct visual theme', async () => {
+  const { THEME_KEYS } = await import('../src/worlds.js');
+  const hex = /^#[0-9a-f]{6}$/i;
+  for (const w of WORLDS) {
+    assert.deepEqual(Object.keys(w.theme).sort(), [...THEME_KEYS].sort(), w.id);
+    for (const key of ['sky', 'sea', 'track']) {
+      assert.equal(w.theme[key].length, 2, `${w.id}.${key}`);
+      assert.ok(w.theme[key].every((c) => hex.test(c)), `${w.id}.${key} are css hex colours`);
+    }
+    assert.equal(w.theme.hemi.length, 2, `${w.id}.hemi`);
+  }
+  assert.equal(new Set(WORLDS.map((w) => w.theme.sky.join())).size, WORLDS.length, 'no two worlds share a sky');
 });

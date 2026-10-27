@@ -17,7 +17,8 @@ export function createWorld(canvas) {
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 500);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x9fb6d6, 1.9));
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x9fb6d6, 1.9);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffffff, 2.1);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
@@ -26,12 +27,10 @@ export function createWorld(canvas) {
   scene.add(sun, sun.target);
 
   // Water and clouds travel with the camera; scrolling the texture fakes an endless sea.
-  const water = waterTexture();
+  let water = waterTexture();
   water.repeat.set(30, 30);
-  const sea = new THREE.Mesh(
-    new THREE.PlaneGeometry(400, 400),
-    new THREE.MeshBasicMaterial({ map: water, color: 0xffffff }),
-  );
+  const seaMaterial = new THREE.MeshBasicMaterial({ map: water, color: 0xffffff });
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), seaMaterial);
   sea.rotation.x = -Math.PI / 2;
   sea.position.y = -1.6;
   scene.add(sea);
@@ -44,6 +43,20 @@ export function createWorld(canvas) {
     clouds.add(sprite);
   }
   scene.add(clouds);
+
+  // Re-skins sky, fog, sea, light and clouds for a world (see THEME_KEYS in worlds.js).
+  const setTheme = (theme) => {
+    scene.background = skyTexture(theme.sky);
+    scene.fog.color.set(theme.sky[1]);
+    water = waterTexture(theme.sea);
+    water.repeat.set(30, 30);
+    seaMaterial.map = water;
+    seaMaterial.needsUpdate = true;
+    hemi.color.set(theme.hemi[0]);
+    hemi.groundColor.set(theme.hemi[1]);
+    sun.color.set(theme.sun);
+    for (const sprite of clouds.children) sprite.material.color.set(theme.cloud);
+  };
 
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = canvas;
@@ -64,5 +77,5 @@ export function createWorld(canvas) {
     clouds.position.z = camera.position.z;
   };
 
-  return { renderer, scene, camera, follow, render: () => renderer.render(scene, camera) };
+  return { renderer, scene, camera, follow, setTheme, render: () => renderer.render(scene, camera) };
 }

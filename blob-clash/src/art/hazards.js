@@ -116,3 +116,133 @@ export function createBomb(radius) {
   group.add(pad, ring, shell, neck, fuse, spark);
   return { group, spark, ring };
 }
+
+/**
+ * Pendulum axe on a gantry over the track. Swing `pivot.rotation.z`: the blade centre sits `length`
+ * below the pivot, which is `pivotHeight` above the floor.
+ */
+export function createAxe(length, pivotHeight, halfWidth) {
+  const half = CONFIG.track.width / 2 + 0.3;
+  const group = new THREE.Group();
+  const frame = glossy(PALETTE.sawRail);
+  const posts = [-1, 1].map((side) => {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, pivotHeight + 0.4, 0.4), frame);
+    post.position.set(side * half, (pivotHeight + 0.4) / 2, 0);
+    return post;
+  });
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(half * 2 + 0.4, 0.4, 0.5), frame);
+  beam.position.y = pivotHeight + 0.2;
+
+  const pivot = new THREE.Group();
+  pivot.position.y = pivotHeight;
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, length, 8), glossy(PALETTE.axeHandle));
+  arm.position.y = -length / 2;
+  // Crescent head: flat top against the arm, curved cutting edge underneath.
+  const head = new THREE.Shape();
+  head.moveTo(-halfWidth, 0.45);
+  head.lineTo(halfWidth, 0.45);
+  head.quadraticCurveTo(halfWidth * 1.2, -0.35, 0, -0.6);
+  head.quadraticCurveTo(-halfWidth * 1.2, -0.35, -halfWidth, 0.45);
+  const blade = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(head, { depth: 0.22, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.04, bevelSegments: 1 }),
+    glossy(PALETTE.axe, { roughness: 0.2, metalness: 0.5 }),
+  );
+  blade.position.set(0, -length, -0.11);
+  pivot.add(arm, blade);
+
+  group.add(...posts, beam, pivot);
+  group.traverse((o) => { o.castShadow = true; });
+  return { group, pivot };
+}
+
+/** Stone pillar with a crown of spikes. Sits on the floor, centred on the origin. */
+export function createSpikedPillar(halfWidth, halfDepth, height = 2.2) {
+  const group = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(halfWidth * 2, height, halfDepth * 2), glossy(PALETTE.pillar));
+  shaft.position.y = height / 2;
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(halfWidth * 2 + 0.2, 0.25, halfDepth * 2 + 0.2), glossy(PALETTE.pillarCap));
+  cap.position.y = height + 0.12;
+  group.add(shaft, cap);
+  const spikeGeometry = new THREE.ConeGeometry(0.2, 0.8, 8);
+  const spikeMaterial = glossy(PALETTE.spike, { roughness: 0.2 });
+  for (let x = -halfWidth + 0.35; x <= halfWidth - 0.3; x += 0.6) {
+    for (let z = -halfDepth + 0.3; z <= halfDepth - 0.25; z += 0.6) {
+      const spike = new THREE.Mesh(spikeGeometry, spikeMaterial);
+      spike.position.set(x, height + 0.65, z);
+      group.add(spike);
+    }
+  }
+  group.traverse((o) => { o.castShadow = o.receiveShadow = true; });
+  return group;
+}
+
+/**
+ * Heavy block that slides in from a rail on a piston. Move `block.position.x` (its centre) and the
+ * piston stretches back to the rail by itself through `setCentre`.
+ */
+export function createPusher(halfWidth, halfDepth, edgeX) {
+  const side = Math.sign(edgeX);
+  const height = 1.6;
+  const group = new THREE.Group();
+  const block = new THREE.Mesh(new THREE.BoxGeometry(halfWidth * 2, height, halfDepth * 2), glossy(PALETTE.pusher));
+  block.position.y = height / 2;
+  // Dark chevron ribs on the inner face, so it reads as "this pushes".
+  const ribMaterial = glossy(PALETTE.pillarCap);
+  for (const dz of [-0.55, 0, 0.55]) {
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.18, height * 0.7, 0.28), ribMaterial);
+    rib.position.set(-side * (halfWidth + 0.05), height / 2, dz * halfDepth * 1.6);
+    block.add(rib);
+  }
+  const piston = new THREE.Mesh(new THREE.BoxGeometry(1, 0.35, 0.5), glossy(PALETTE.pusherPiston, { metalness: 0.5 }));
+  piston.position.y = height / 2;
+  group.add(block, piston);
+  group.traverse((o) => { o.castShadow = true; });
+  /** `x` is the block centre; the piston spans from the rail (just outside it) to the block. */
+  const setCentre = (x) => {
+    block.position.x = x;
+    const from = edgeX + side * (halfWidth + 0.4);
+    piston.scale.x = Math.max(0.01, Math.abs(from - x));
+    piston.position.x = (from + x) / 2;
+  };
+  return { group, block, setCentre };
+}
+
+/** Studded crusher ball. Spin `roller.rotation.x` to roll it; `group` is what to move. */
+export function createBall(radius) {
+  const group = new THREE.Group();
+  const roller = new THREE.Group();
+  roller.add(new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 24), glossy(PALETTE.ball, { roughness: 0.3, metalness: 0.2 })));
+  const studs = glossy(PALETTE.ballStud, { roughness: 0.3 });
+  // Studs on a fibonacci sphere: evenly spread, so the roll reads from every angle.
+  const count = 18;
+  for (let i = 0; i < count; i++) {
+    const y = 1 - (2 * (i + 0.5)) / count;
+    const ring = Math.sqrt(1 - y * y);
+    const a = i * Math.PI * (3 - Math.sqrt(5));
+    const normal = new THREE.Vector3(Math.cos(a) * ring, y, Math.sin(a) * ring);
+    const stud = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.17, radius * 0.4, 8), studs);
+    stud.position.copy(normal).multiplyScalar(radius * 1.02);
+    stud.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+    roller.add(stud);
+  }
+  group.add(roller);
+  group.traverse((o) => { o.castShadow = true; });
+  return { group, roller };
+}
+
+/** Translucent yellow strip on the floor that warns which lane the ball will take. Fade `strip.material`. */
+export function createBallLane(width, length) {
+  const material = new THREE.MeshBasicMaterial({ color: PALETTE.ballWarn, transparent: true, opacity: 0, depthWrite: false });
+  const strip = new THREE.Mesh(new THREE.PlaneGeometry(width, length).rotateX(-Math.PI / 2), material);
+  strip.position.y = 0.04;
+  strip.renderOrder = 1;
+  return strip;
+}
+
+/** Flat ring that grows on the water where the ball landed. Scale it and fade `material`. */
+export function createRipple() {
+  const material = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 32).rotateX(-Math.PI / 2), material);
+  ring.visible = false;
+  return ring;
+}

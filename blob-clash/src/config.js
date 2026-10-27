@@ -22,6 +22,15 @@ export const PALETTE = {
   mat: 0xa8687f,
   spikeBase: 0x4a2c9c,
   spike: 0xe8433f,
+  axe: 0xcfd6ee,
+  axeHandle: 0x8a5a3a,
+  pillar: 0x8a7fd0,
+  pillarCap: 0x4a3c9c,
+  pusher: 0xff6a3a,
+  pusherPiston: 0xcfd6ee,
+  ball: 0x6a5acd,
+  ballStud: 0xff7a3a,
+  ballWarn: 0xffd23a, // yellow, not red: nothing on the floor should look like blood
   saw: 0x7d5ce0,
   sawTeeth: 0xff7a3a,
   sawRail: 0x2e2466,
@@ -79,8 +88,9 @@ export const CONFIG = {
     trapButtonRadius: 0.9,
     // Hazard pool: each kind unlocks at a level, and every level features its world's kind
     // (weight × featuredBoost), so neighbouring worlds feel different.
-    weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35 },
-    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3 },
+    weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35, axe: 0.35, ball: 0.35, pillars: 0.3, pusher: 0.3 },
+    // First level of a world: axe world 3, ball world 4, pillars world 5, pusher world 6. One new hazard per world.
+    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3, axe: 7, ball: 10, pillars: 13, pusher: 16 },
     featuredBoost: 3,
     spikeHalfDepth: 1.1,
     // Spike pads hug the track edges (like the reference): [centre x, half width] per pad.
@@ -94,6 +104,38 @@ export const CONFIG = {
     sawRadius: 0.9,
     sawHalfDepth: 0.25,
     sawSpeed: 1.0,
+    // Axe: a pendulum hung over the track. It swings by +-axeSwing radians; the blade only cuts while
+    // it is low (its centre below axeClearance), and swings out of reach near the ends of the arc.
+    axeLength: 5.6, // pivot to blade centre
+    axePivotHeight: 6.4,
+    axeSwing: 0.95,
+    axeSpeed: 1.5,
+    axeHalfWidth: 0.9,
+    axeHalfDepth: 0.3,
+    axeClearance: 1.6,
+    // Spiked pillars: pairs hugging both rails, spikes on top, narrowing the track. Each is at most
+    // 2 × `pillarMaxHalfWidth` wide, so the gap between a pair (track width − 4 × half width) still fits
+    // the largest crowd; a test checks it.
+    pillarMinHalfWidth: 0.5,
+    pillarMaxHalfWidth: 0.75,
+    pillarHalfDepth: 0.7,
+    pillarPairGap: 5, // a second pair follows this far behind
+    // Pusher: a big block slides in from one rail and back out (like a slider, but heavy and wide).
+    // It reaches at most `pusherReach` units into the track, which leaves the largest crowd a way past.
+    pusherHalfWidth: 1.8,
+    pusherHalfDepth: 1.1,
+    pusherReach: 2.8,
+    pusherSpeed: 1.6,
+    // Ball: rolls down one lane towards the player, then veers off the edge into the water. A yellow strip
+    // lights up `ballWarn` seconds before each run. The cycle is roll + fall + wait, offset per ball.
+    ball: {
+      radius: 1.25,
+      span: 6, // half the length of the run, centred on the obstacle's d
+      speed: 9,
+      fallTime: 0.7,
+      waitTime: 1.7,
+      warnTime: 1.1,
+    },
     // Jump: a ramp launches the blobs that cross it over the saws placed right behind it.
     rampHalfWidth: 3.4,
     rampHalfDepth: 1.4,
@@ -120,6 +162,15 @@ export const CONFIG = {
     bruteStrength: 5,
     bruteScale: 1.7,
   },
+  // Sleeping gray blobs standing in a lane: touching one wakes it in the player's colour and joins the crowd.
+  recruits: {
+    chance: 0.7, // per segment
+    perGroupMin: 1,
+    perGroupMax: 5, // reached gradually along the campaign's pressure curve
+    radius: 0.4,
+    slotSpacing: 0.85,
+    offsetD: 25, // from the segment's start: past the hazards, before the walkers and the enemy crowd
+  },
   coins: { perRow: 5, spacing: 1.6, value: 10 },
   hud: { bubbleRange: 42 }, // only label crowds this close, so the horizon stays clean
   boss: {
@@ -130,6 +181,7 @@ export const CONFIG = {
     maxDifficulty: 1.4,
     kindFactor: { mini: 0.8, boss: 1, chest: 1 },
     miniScale: 0.8, // mini bosses are a smaller roster boss in the world's colour
+    mechanicsFromWorld: 2, // worlds before this one fight with plain punches only
     miniAttack: { interval: 1.4, move: 'jab' }, // and only throw simple jabs
     finishGap: 4, // straight run between the last segment and the finish line
     ringDepth: 11,
@@ -143,6 +195,19 @@ export const CONFIG = {
     finisherEvery: 5, // every 5th chained tap is a flying jump punch
     jumpPunchMultiplier: 2.5,
     openingMultiplier: 2.5, // the fight opens with a free flying punch
+    // Boss mechanics (worlds 2+, see bosses.js): a telegraphed big punch to dodge, a high guard, a second phase.
+    bigEvery: 3, // every 3rd attack of a boss that can dodge is the big punch
+    bigInterval: 2.4, // its damage is sized as if it were this slow a single strike
+    bigSwing: 0.45, // seconds from the end of the warning until the fist lands
+    telegraph: 0.8, // warning before the big punch: the boss glows and an arrow shows the way to dodge
+    dodgeDrag: 50, // pixels of drag (or 0.12 s of an arrow key) that count as a dodge
+    keyDragPerSecond: 420,
+    counterSeconds: 1.5, // the boss is dazed after a miss...
+    counterMultiplier: 2, // ...and takes double damage
+    guardMultiplier: 0.2, // punches into a raised guard
+    guardOpenSeconds: 1, // the guard drops this long after every attack
+    enrageBelow: 0.5, // boss health share that starts the second phase
+    enrageSpeed: 1.25,
   },
   bonus: { maxMultiplier: 5, step: 0.2, tileDepth: 2.6 },
   campaign: { starsAt: [2, 4], celebrateMs: 2200 }, // x1–x2 = 1 star, up to x4 = 2, above = 3; level count lives in worlds.js
@@ -153,6 +218,30 @@ export const CONFIG = {
     cheats: [['KeyB', 'KeyL', 'KeyO', 'KeyB'], ['KeyI', 'KeyD', 'KeyD', 'KeyQ', 'KeyD']],
   },
   keys: { perChest: 3, chestCoinsPerLevel: 60 },
+  // Chest stage (level 3 of every world): the crowd hops into a giant chest, the camera swings from the
+  // side to a front zoom while the lid jolts open and a fountain of coins bursts out. Times are seconds.
+  chest: {
+    coinsPerBlob: 5, // payout per blob that made it to the chest in the first world...
+    worldGrowth: 0.4, // ...and every later world pays this much more per blob (x1.4 in the 2nd, x1.8 in the 3rd)
+    approach: 0.9, // camera settles on the side view before the first hop
+    hopSpan: 1.4, // the first and the last blob take off this far apart
+    hopFlight: 0.7,
+    hopHeight: 4,
+    rotate: 1.2, // side -> front camera swing
+    lidDelay: 0.3, // chest shakes this long before the lid jumps open
+    lidOpen: 0.45,
+    lidAngle: 1.95, // rad
+    lidAjar: 0.3, // the gap the blobs hop into, until the lid slams shut
+    coins: 360,
+    coinStartY: 2.4,
+    coinSpeedUp: [9, 17],
+    coinSpeedOut: [1, 7],
+    coinPour: 0.5, // coins leave the chest spread over this long
+    coinFloor: 0.3, // coins vanish once they land (the floor leaves nothing behind)
+    coinVanish: 0.2,
+    gravity: 16,
+    camera: { sideRadius: 18, frontRadius: 9, sideHeight: 6.5, frontHeight: 5.5, lookY: 2.4, lookLead: 1.8 },
+  },
   reward: { base: 50, perLevel: 10 },
   upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
 };

@@ -14,18 +14,26 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 - **Obstáculos:** fatias de melancia e **luvas de boxe em mola** que entram pelas bordas, e espinhos nas laterais.
 - **Armadilha com botão:** espinhos na pista inteira. Pise no **botão verde** antes deles para recolhê-los, senão a multidão morre.
 - **Serras** (fase 2+) deslizam num trilho de um lado ao outro da pista.
+- **Machado pendular** (mundo 3+, a partir da fase 7): balança de uma borda à outra e só corta quando a lâmina está baixa; nas pontas do arco ela passa acima das cabeças.
+- **Pilares com espinhos** (mundo 4+, a partir da fase 10): um ou dois pares nas bordas, espinhos em cima, que estreitam a pista; o meio sempre deixa a maior multidão passar.
+- **Bloco empurrador** (mundo 4+): um bloco grande entra pela lateral e sai de novo, levando quem estiver na frente; a pista nunca fecha para a maior multidão (coberto por teste).
 - **Pulo** (fase 2+): uma rampa amarela lança quem passa por ela por cima das serras logo atrás; quem desvia da rampa encara as serras.
 - **Bombas** (fase 3+): duas fileiras, cada uma agrupada de um lado (alternando), com espaço para a maior multidão passar pelo outro. Encostou, explode e leva todo mundo no raio.
 - **Bonecos cinza** (fase 2+) andam de um lado para o outro; cada um que esbarra leva um blob junto. A partir da fase 4 aparecem os **brutamontes** (levam 5).
 - Cada fase tem um **obstáculo em destaque** (em ciclo: luvas/melancias, serras, bombas, pulo, armadilha, espinhos), então fases seguidas não se repetem.
 - **Multidões vermelhas** bloqueiam a pista: os dois lados se anulam um a um.
 - **Skins** (`src/skins.js`): o botão SKINS no menu abre a loja; skins se compram com moedas e vestem só o **líder da multidão** e o **campeão** da luta (o resto da multidão continua laranja). O catálogo é uma lista; os acessórios ficam em `src/art/skinModels.js`.
+- **Fase do baú** (`src/chest.js`, `src/chestStage.js`, `src/art/chest.js`): a pista termina num baú 3D gigante. Os blobs pulam dentro um a um (o contador de moedas sobe a cada um), a tampa bate, a câmera gira do lado para a frente com zoom (~1,2 s) e a tampa abre com um tranco, soltando 360 moedas 3D giratórias (um só `InstancedMesh`) que caem e somem sem deixar nada no chão. Cada blob vale mais moedas a cada mundo; o multiplicador e as estrelas vêm do tamanho da multidão que chegou. Tudo em `CONFIG.chest`.
 - **Moedas** na pista e **uma chave por fase**. Com 3 chaves, abre um **baú** de moedas.
 - **Boss:** a multidão se funde num campeão de luvas, que abre a luta com um **soco voador**.
   **TAP TO FIGHT!**: cada toque é um jab; o 5º toque seguido vira **JUMP PUNCH** (2,5× de dano).
+  A partir do mundo 2 os chefes ganham mecânicas (`mechanics` em `src/bosses.js`, estado puro em `bossBrainStep`):
+  **golpe grande** avisado 0,8 s (o chefe brilha, aparece **ARRASTE!** com a seta): arrastar para o lado (ou ←/→) desvia
+  e abre 1,5 s de contra-ataque com dano dobrado; **guarda alta**: jabs fazem 20% até o chefe baixar a guarda (o JUMP PUNCH
+  atravessa); **fúria** abaixo de 50% de vida: 25% mais rápido e troca de golpe (`rage`). Mini chefes usam só uma delas.
   Multidão maior dá mais vida e soco mais forte; todo chefe derruba qualquer campeão em ~10 s, então é preciso tocar rápido.
 - **30 fases em 10 mundos de 3** (`src/worlds.js`): a fase 1 de cada mundo termina num **mini chefe** (um chefe do elenco
-  em 0,8×, na cor do mundo, só com jabs), a 2 no **chefão** do mundo e a 3 num baú de moedas (por enquanto ainda com luta).
+  em 0,8×, na cor do mundo, só com jabs), a 2 no **chefão** do mundo e a 3 num **baú de moedas** (sem luta).
   Cada mundo tem um obstáculo em destaque. A pressão (tamanho da pista, multidões inimigas, vida dos chefes) sobe dentro do
   mundo e dá um respiro quando o próximo começa; de 6 a 12 segmentos por fase.
 - **Chefes** (`src/bosses.js`), cada um com visual e golpe próprios; qual aparece em cada fase vem do mundo:
@@ -68,7 +76,7 @@ Testes (Node 18+): `npm test`
 | `src/level.js` | Gera a fase como **dados** (portões, obstáculos, moedas, inimigos, Boss) | não |
 | `src/art/textures.js` | Texturas desenhadas em canvas (água, listras, texto com contorno, respingos) | sim |
 | `src/art/models.js` | Modelos procedurais: bonequinho de gelatina, Boss, melancia, espinhos, ringue, escada de bônus | sim |
-| `src/art/hazards.js` | Serra com trilho, rampa de pulo, bomba | sim |
+| `src/art/hazards.js` | Serra com trilho, machado pendular, rampa de pulo, bomba | sim |
 | `src/crowd.js` | Multidão como um único `InstancedMesh` | sim |
 | `src/levelView.js` | Converte os dados da fase em objetos 3D | sim |
 | `src/game.js` | Máquina de estados `menu → running ⇄ skirmish → merge → boxing → bonus → complete / lost` | sim |

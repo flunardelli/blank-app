@@ -71,6 +71,65 @@ function makeSaws(rng, d, cfg) {
   return rng.chance(0.5) ? [saw(rng, d, cfg)] : [saw(rng, d, cfg), saw(rng, d + 3.5, cfg, Math.PI)];
 }
 
+function axe(rng, d, cfg, phaseOffset = 0) {
+  const ob = cfg.obstacle;
+  return {
+    kind: 'axe', d, length: ob.axeLength, pivotHeight: ob.axePivotHeight, swing: ob.axeSwing,
+    halfWidth: ob.axeHalfWidth, halfDepth: ob.axeHalfDepth, clearance: ob.axeClearance,
+    speed: ob.axeSpeed * (0.9 + rng.next() * 0.2), phase: rng.next() * Math.PI * 2 + phaseOffset,
+  };
+}
+
+// One pendulum axe, or two a few units apart swinging in opposite phase.
+function makeAxes(rng, d, cfg) {
+  return rng.chance(0.5) ? [axe(rng, d, cfg)] : [axe(rng, d, cfg), axe(rng, d + 4.5, cfg, Math.PI)];
+}
+
+// Spiked pillars at both rails, one or two pairs in a row; the middle stays open for the biggest crowd.
+function makePillars(rng, d, cfg) {
+  const ob = cfg.obstacle;
+  const half = cfg.track.width / 2;
+  const pair = (rowD) => {
+    const halfWidth = ob.pillarMinHalfWidth + rng.next() * (ob.pillarMaxHalfWidth - ob.pillarMinHalfWidth);
+    const pads = [-1, 1].map((side) => ({ x: side * (half - halfWidth), halfWidth, halfDepth: ob.pillarHalfDepth }));
+    return { kind: 'pillars', d: rowD, pads };
+  };
+  return rng.chance(0.5) ? [pair(d)] : [pair(d), pair(d + ob.pillarPairGap)];
+}
+
+// A big block sliding in from one rail, or two from alternate rails taking turns.
+function makePushers(rng, d, cfg) {
+  const ob = cfg.obstacle;
+  const half = cfg.track.width / 2;
+  const phase = rng.next() * Math.PI * 2;
+  const pusher = (side, rowD, offset) => ({
+    kind: 'pusher', d: rowD, edgeX: side * half, halfWidth: ob.pusherHalfWidth, halfDepth: ob.pusherHalfDepth,
+    reach: ob.pusherReach, speed: ob.pusherSpeed, phase: phase + offset,
+  });
+  const side = rng.pick([-1, 1]);
+  return rng.chance(0.5) ? [pusher(side, d, 0)] : [pusher(side, d, 0), pusher(-side, d + 5, Math.PI)];
+}
+
+function ball(rng, d, cfg, x, offset) {
+  const ob = cfg.obstacle.ball;
+  const half = cfg.track.width / 2;
+  return {
+    kind: 'ball', d, x, offset, side: x === 0 ? rng.pick([-1, 1]) : Math.sign(x), radius: ob.radius, span: ob.span,
+    speed: ob.speed, fallTime: ob.fallTime, waitTime: ob.waitTime, warnTime: ob.warnTime,
+    fallReach: half + ob.radius + 1 - Math.abs(x), fallDepth: 6, // slides past the rail, then down below the water line
+  };
+}
+
+// One ball in one lane, or two in different lanes that roll in turns: never all three lanes at once.
+function makeBalls(rng, d, cfg) {
+  const ob = cfg.obstacle.ball;
+  const first = rng.pick(cfg.track.lanes);
+  const lanes = rng.chance(0.5) ? [first] : [first, rng.pick(cfg.track.lanes.filter((x) => x !== first))];
+  const period = (2 * ob.span) / ob.speed + ob.fallTime + ob.waitTime;
+  const start = rng.next() * period;
+  return lanes.map((x, i) => ball(rng, d, cfg, x, start + (i * period) / 2));
+}
+
 // A ramp that does not cover the whole track, with saws behind it: take the ramp and fly over them.
 function makeJump(rng, d, cfg) {
   const ob = cfg.obstacle;
@@ -90,7 +149,8 @@ function makeBombs(rng, d, cfg) {
 }
 
 const OBSTACLE_MAKERS = {
-  slider: makeSliders, spikes: makeSpikes, trap: makeTrap, saw: makeSaws, jump: makeJump, bombs: makeBombs,
+  slider: makeSliders, spikes: makeSpikes, trap: makeTrap, saw: makeSaws, jump: makeJump, bombs: makeBombs, axe: makeAxes,
+  ball: makeBalls, pillars: makePillars, pusher: makePushers,
 };
 
 /** Hazard weights for a level: only unlocked kinds, with this level's featured kind boosted. */
@@ -121,6 +181,16 @@ function makeWalkers(rng, d, level, pressure, cfg) {
   });
 }
 
+// A few sleeping blobs huddled in one lane (two rows of three at most): steer into the lane to wake them.
+function makeRecruits(rng, d, pressure, cfg) {
+  const r = cfg.recruits;
+  const most = Math.min(r.perGroupMax, 1 + Math.floor(pressure * r.perGroupMax * 1.5));
+  const laneX = rng.pick(cfg.track.lanes);
+  return Array.from({ length: rng.int(r.perGroupMin, most) }, (_, i) => ({
+    x: laneX + ((i % 3) - 1) * r.slotSpacing, d: d + Math.floor(i / 3) * r.slotSpacing, radius: r.radius,
+  }));
+}
+
 function makeCoinRow(rng, d, cfg) {
   const x = rng.pick(cfg.track.lanes);
   return Array.from({ length: cfg.coins.perRow }, (_, i) => ({ x, d: d + i * cfg.coins.spacing }));
@@ -138,6 +208,9 @@ export function generateLevel(level, cfg = CONFIG) {
   const coins = [];
   const enemies = [];
   const walkers = [];
+  const recruits = [];
+  // Own stream, so adding recruits never reshuffles the rest of a level.
+  const recruitRng = createRng(level * 104729 + 5);
   const weights = hazardWeights(level, cfg.obstacle);
   // Best reachable crowd with a fresh (non-upgraded) start and perfect gate choices.
   let bestCount = 1;
@@ -154,6 +227,12 @@ export function generateLevel(level, cfg = CONFIG) {
 
     coins.push(...makeCoinRow(rng, d + 6, cfg));
     obstacles.push(...makeObstacles(rng, d + 16, weights, cfg));
+
+    if (recruitRng.chance(cfg.recruits.chance)) {
+      const group = makeRecruits(recruitRng, d + cfg.recruits.offsetD, pressure, cfg);
+      recruits.push(...group);
+      bestCount += group.length; // every sleeper is reachable by steering, so perfect play wakes them all
+    }
 
     if (s % 2 === 1) {
       const rise = cfg.enemy.pressureShare * pressure;
@@ -181,6 +260,7 @@ export function generateLevel(level, cfg = CONFIG) {
     key,
     enemies: enemies.map((e, id) => ({ ...e, id })),
     walkers: walkers.map((w, id) => ({ ...w, id })),
+    recruits: recruits.map((r, id) => ({ ...r, id })),
     finishD,
     boss: { d: bossD, hp: Math.max(5, Math.round(bestCount * bossDifficulty(level, cfg.boss))) },
     ladderStart: finishD + cfg.boss.ringDepth + 1,
