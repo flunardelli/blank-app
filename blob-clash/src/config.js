@@ -148,6 +148,15 @@ export const CONFIG = {
     bruteStrength: 5,
     bruteScale: 1.7,
   },
+  // Sleeping gray blobs standing in a lane: touching one wakes it in the player's colour and joins the crowd.
+  recruits: {
+    chance: 0.7, // per segment
+    perGroupMin: 1,
+    perGroupMax: 5, // reached gradually along the campaign's pressure curve
+    radius: 0.4,
+    slotSpacing: 0.85,
+    offsetD: 25, // from the segment's start: past the hazards, before the walkers and the enemy crowd
+  },
   coins: { perRow: 5, spacing: 1.6, value: 10 },
   hud: { bubbleRange: 42 }, // only label crowds this close, so the horizon stays clean
   boss: {
