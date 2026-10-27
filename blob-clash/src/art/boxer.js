@@ -5,7 +5,7 @@
 // Rig (rig units, feet at y = 0, facing +z):
 //   root (world placement & scale) -> frame (body proportions) -> skinned mesh -> bones
 import * as THREE from 'three';
-import { PALETTE } from '../config.js';
+import { CONFIG, PALETTE } from '../config.js';
 import { BOSS_BODY, CHAMPION_BODY } from './bodySpecs.js';
 import { createSkinnedBody, posesToBones } from './character.js';
 import { glossy, glove, gummyMaterial } from './models.js';
@@ -127,6 +127,98 @@ const HEADGEAR = {
     group.position.y = 0.3;
     return group;
   },
+  topknot() {
+    const group = new THREE.Group();
+    const hair = glossy(0x1c1c26);
+    group.add(cap(0.44, 0x1c1c26, 0.36));
+    const bun = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 10), hair));
+    bun.position.set(0, 0.5, -0.04);
+    const tie = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 14), glossy(0xd8262e));
+    tie.rotation.x = Math.PI / 2;
+    tie.position.set(0, 0.4, -0.04);
+    group.add(bun, tie);
+    return group;
+  },
+  ninja() {
+    const group = new THREE.Group();
+    group.add(cap(0.45, 0x23233a, 0.62));
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.44, 0.05, 8, 32), glossy(0xd8264a));
+    band.rotation.x = Math.PI / 2;
+    band.position.y = 0.08;
+    group.add(band);
+    for (const side of [-1, 1]) { // the knot's two tails fly out behind
+      const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.34, 4, 8), glossy(0xd8264a));
+      tail.position.set(side * 0.1, 0.0, -0.56);
+      tail.rotation.set(1.1, 0, side * 0.5);
+      group.add(tail);
+    }
+    return group;
+  },
+  antenna() {
+    const group = new THREE.Group();
+    const steel = glossy(0xaeb8cc, { metalness: 0.6, roughness: 0.3 });
+    group.add(cap(0.44, 0xaeb8cc, 0.45));
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 8), steel);
+    stalk.position.y = 0.52;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), glossy(0xd8262e, { emissive: 0xd8262e, emissiveIntensity: 0.4 }));
+    ball.position.y = 0.7;
+    group.add(stalk, ball);
+    for (const side of [-1, 1]) { // ear bolts
+      const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.12, 12), steel);
+      bolt.rotation.z = Math.PI / 2;
+      bolt.position.set(side * 0.43, -0.02, 0);
+      group.add(bolt);
+    }
+    return group;
+  },
+  pirate() {
+    const group = new THREE.Group();
+    const felt = glossy(0x1f1f2b);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 3), felt); // a tricorn
+    brim.rotation.y = Math.PI / 2;
+    brim.position.y = 0.36;
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 0.26, 3), felt);
+    crown.rotation.y = Math.PI / 2;
+    crown.position.y = 0.5;
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), glossy(0xffffff));
+    skull.position.set(0, 0.5, 0.34);
+    const patch = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8), glossy(0x111111));
+    patch.scale.set(1, 1, 0.4);
+    patch.position.set(0.16, 0.0, 0.38);
+    group.add(brim, crown, skull, patch);
+    return group;
+  },
+  castleCrown() {
+    const group = new THREE.Group();
+    const gold = glossy(0xffc21a, { metalness: 0.5, roughness: 0.2 });
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.36, 0.22, 24, 1, true), gold);
+    band.material.side = THREE.DoubleSide;
+    group.add(band);
+    for (let i = 0; i < 8; i++) { // battlements, like the castle walls
+      const a = (i / 8) * Math.PI * 2;
+      const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.12), gold);
+      merlon.position.set(Math.sin(a) * 0.35, 0.2, Math.cos(a) * 0.35);
+      merlon.rotation.y = a;
+      group.add(merlon);
+    }
+    const gem = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), glossy(0xd8262e));
+    gem.position.set(0, 0, 0.37);
+    group.add(gem);
+    group.position.y = 0.36;
+    return group;
+  },
+};
+
+// Extra gear per roster `outfit` value, attached to the Torso bone (positions in rig units).
+const OUTFIT = {
+  cape(torso) {
+    const cape = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.9, 0.05), glossy(0xc2263e)));
+    cape.material.side = THREE.DoubleSide;
+    attach(torso, cape, { position: [0, -0.3, -0.3] });
+    const fur = shadowed(new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.07, 8, 20), glossy(0xfff6e8)));
+    fur.rotation.x = Math.PI / 2;
+    attach(torso, fur, { position: [0, 0.22, -0.02] });
+  },
 };
 
 // ---- Rig ------------------------------------------------------------------------
@@ -191,12 +283,12 @@ export function placeRoot(rig, { dash, lift }) {
 
 // ---- The two kinds of boxer ------------------------------------------------------
 /** Boss from a roster entry (bosses.js): a lean gummy fighter in trunks, like the reference. */
-export function createBoss({ colors, glove: gloveColor, headgear, body: frame }) {
+export function createBoss({ colors, glove: gloveColor, headgear, body: frame, trunks: trunksColor = 0xffffff, outfit, size = 1 }) {
   const material = gummyMaterial();
   const body = createSkinnedBody(BOSS_BODY, material, colors);
   const hips = body.bones.Hips;
 
-  const trunks = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.27, 0.3, 24), glossy(0xffffff, { roughness: 0.4 })));
+  const trunks = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.27, 0.3, 24), glossy(trunksColor, { roughness: 0.4 })));
   const waistband = shadowed(new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.045, 8, 28), glossy(gloveColor)));
   waistband.rotation.x = Math.PI / 2;
   attach(hips, trunks);
@@ -207,9 +299,10 @@ export function createBoss({ colors, glove: gloveColor, headgear, body: frame })
   attach(body.bones.Head, headGroup, { position: [0, 0, 0.03], scale: 0.8 });
   addGloves(body, gloveColor, 0.85);
   addBoots(body, 0x2b2b3a);
+  OUTFIT[outfit]?.(body.bones.Torso);
 
   const rig = createRig(body, material, frame);
-  rig.root.scale.setScalar(2.6);
+  rig.root.scale.setScalar(CONFIG.boss.rigScale * size);
   return rig;
 }
 

@@ -36,3 +36,9 @@ test('mapRows is 10 rows of 3: mini, boss, chest, with stars on beaten levels', 
   assert.equal(rows[0].levels[0].stars, 3);
   assert.equal(rows[0].levels[1].stars, 0);
 });
+
+test('every map row names its world boss, ten different ones in all', () => {
+  const rows = mapRows(defaultSave());
+  assert.equal(new Set(rows.map((r) => r.boss.id)).size, 10);
+  rows.forEach((r) => assert.equal(r.boss.id, r.world.boss));
+});

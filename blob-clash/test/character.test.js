@@ -106,3 +106,14 @@ test('the boss body keeps its proportions per roster entry', () => {
   assert.ok(wide.root.children[0].scale.x > lean.root.children[0].scale.x);
   posesToBones(wide.body, GUARD);
 });
+
+test('all ten bosses build skinned bodies, and a world boss rig is 1.5x the ring size of a normal one', () => {
+  for (const b of BOSSES) {
+    const rig = createBoss(b);
+    assert.ok(rig.body.mesh.isSkinnedMesh, b.id);
+    applyPose(rig, GUARD);
+  }
+  const normal = createBoss(BOSSES[0]);
+  const big = createBoss({ ...BOSSES[0], size: 1.5 });
+  assert.ok(Math.abs(big.root.scale.y / normal.root.scale.y - 1.5) < 1e-9);
+});

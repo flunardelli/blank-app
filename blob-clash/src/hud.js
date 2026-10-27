@@ -54,8 +54,12 @@ export class Hud {
     el.hideTimer = setTimeout(() => { el.hidden = true; }, 1600);
   }
 
-  showBanner(text) {
-    this.flash($('banner'), text);
+  /** A string, or `{ text, title }`: the big line and an optional smaller line above it (a world boss's entrance). */
+  showBanner(banner) {
+    const { text, title } = typeof banner === 'string' ? { text: banner } : banner;
+    const el = $('banner');
+    this.flash(el, text);
+    if (title) el.prepend(Object.assign(document.createElement('small'), { textContent: title }));
   }
 
   popText(text) {
@@ -158,21 +162,21 @@ export class Hud {
   // `celebrate` ({ done, unlocked }) stamps the square just beaten and bounces the one it unlocked.
   showMap({ rows, onPlay, onBack, celebrate }) {
     const kindMark = { mini: '🥊', boss: '👑', chest: '🎁' };
-    $('map-rows').replaceChildren(...rows.map(({ world, levels }) => {
+    $('map-rows').replaceChildren(...rows.map(({ world, boss, levels }) => {
       const row = Object.assign(document.createElement('div'), { className: 'map-row' });
       row.style.setProperty('--accent', world.accent);
       const cells = levels.map(({ level, kind, status, stars }) => {
         const cell = Object.assign(document.createElement('button'), { className: `map-cell ${status} ${kind}` });
         cell.disabled = status === 'locked';
         cell.setAttribute('aria-label', `Fase ${level}`);
-        cell.innerHTML = `<span class="mark">${status === 'locked' ? '🔒' : kindMark[kind]}</span><span class="num">${level}</span>`
+        cell.innerHTML = `<span class="mark">${status === 'locked' ? '🔒' : kind === 'boss' ? boss.emoji : kindMark[kind]}</span><span class="num">${level}</span>`
           + (stars ? `<span class="stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>` : '');
         cell.onclick = () => onPlay(level);
         if (celebrate?.done === level) cell.classList.add('just-done');
         if (celebrate?.unlocked === level) cell.classList.add('just-unlocked');
         return cell;
       });
-      row.innerHTML = `<h2 class="ink">${world.name}</h2><div class="map-cells"></div>`;
+      row.innerHTML = `<h2 class="ink">${world.name}<small>${boss.emoji} ${boss.name}</small></h2><div class="map-cells"></div>`;
       row.querySelector('.map-cells').append(...cells);
       return row;
     }));
