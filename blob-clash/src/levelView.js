@@ -7,6 +7,7 @@ import {
   gummyMaterial, humanoidGeometry,
 } from './art/models.js';
 import { createBoss, createChampion } from './art/boxer.js';
+import { createChest } from './art/chest.js';
 import { createBomb, createRamp, createSaw, createSawRail } from './art/hazards.js';
 import { bossForLevel } from './bosses.js';
 import { makeJelly, withJellyPhases } from './art/jelly.js';
@@ -56,8 +57,10 @@ export function buildLevelView(scene, level) {
     return object;
   };
 
-  const ladder = createLadder();
-  const trackEnd = level.ladderStart + ladder.length + 6;
+  // Chest levels end at a chest instead of a boss ring and a bonus ladder.
+  const isChest = level.kind === 'chest';
+  const ladder = isChest ? null : createLadder();
+  const trackEnd = isChest ? level.boss.d + 10 : level.ladderStart + ladder.length + 6;
   root.add(createTrack(-12, trackEnd));
 
   const gates = level.gates.map((pair) => {
@@ -129,11 +132,18 @@ export function buildLevelView(scene, level) {
   key.position.y = 1.2;
 
   place(createFinishLine(), level.finishD);
-  place(createRing(CONFIG.boss.ringDepth), level.finishD + 0.6);
-  const boss = createBoss(bossForLevel(level.level));
-  boss.anchor.set(0, 0.25, toZ(level.boss.d));
-  root.add(boss.root);
-  place(ladder.group, level.ladderStart);
+  let boss = null;
+  let chest = null;
+  if (isChest) {
+    chest = createChest();
+    place(chest.root, level.boss.d);
+  } else {
+    place(createRing(CONFIG.boss.ringDepth), level.finishD + 0.6);
+    boss = createBoss(bossForLevel(level.level));
+    boss.anchor.set(0, 0.25, toZ(level.boss.d));
+    root.add(boss.root);
+    place(ladder.group, level.ladderStart);
+  }
 
   return {
     root,
@@ -143,7 +153,8 @@ export function buildLevelView(scene, level) {
     enemies,
     walkers,
     key,
-    boss,
+    boss, // null on chest levels
+    chest, // { root, rig, lid, glow }, only on chest levels
     ladder,
     dispose() {
       enemies.forEach(({ crowd }) => crowd.mesh.dispose());

@@ -3,7 +3,7 @@
 // Every world ends its levels differently (see LEVEL_KINDS):
 //   level 1  a mini boss    (a smaller roster boss in the world's colour)
 //   level 2  the world boss
-//   level 3  a coin chest   (no boss; until the chest stage lands the game still plays the world boss)
+//   level 3  a coin chest   (no boss: the crowd hops into a giant chest, see chest.js)
 //
 // World fields:
 //   name      shown on the map and in banners

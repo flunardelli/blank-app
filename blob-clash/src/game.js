@@ -1,4 +1,5 @@
 // Game state machine: menu -> running <-> skirmish -> merge -> boxing -> bonus -> complete | lost.
+// Chest levels skip the fight: running <-> skirmish -> chest -> complete.
 import * as THREE from 'three';
 import { CONFIG, PALETTE } from './config.js';
 import { Effects } from './effects.js';
@@ -14,9 +15,11 @@ import {
   startBlobsFor, sweepX, upgradeCost,
 } from './rules.js';
 import { createSequences } from './cheat.js';
+import { ChestStage } from './chestStage.js';
+import { chestStageCoins, coinsPerBlob, hopDelays } from './chest.js';
 import { completeLevel, hasProgress, totalStars } from './progress.js';
 import { mapRows } from './map.js';
-import { LEVEL_COUNT } from './worlds.js';
+import { LEVEL_COUNT, levelInfo } from './worlds.js';
 import { loadSave, resetSave, writeSave } from './save.js';
 
 const UPGRADES = [
@@ -118,6 +121,8 @@ export class Game {
     this.runCoins = 0;
     this.keyTaken = false;
     this.fight = null;
+    this.chestStage = null;
+    this.stageCoins = 0;
 
     this.player.center = { x: 0, d: 0 };
     this.player.units = [];
@@ -176,7 +181,7 @@ export class Game {
     player.center.d = level.finishD - 1;
     player.units.forEach((u) => { u.d = u.prevD = player.center.d; u.x = player.center.x; delete u.jump; u.lift = 0; });
     this.hud.showBanner('DEV');
-    this.startMerge();
+    this.finishRun();
   }
 
   // ---- Frame update -------------------------------------------------------------
@@ -188,6 +193,7 @@ export class Game {
     if (this.state === 'running') this.updateRunning(dt);
     else if (this.state === 'skirmish') this.updateSkirmish(dt);
     else if (this.state === 'boxing') this.updateBoxing(dt);
+    else if (this.state === 'chest') this.chestStage.update(dt);
 
     this.updateJumps();
     this.animateScene(dt);
@@ -214,7 +220,7 @@ export class Game {
     this.checkEnemies();
 
     if (player.count <= 0) this.lose();
-    else if (player.center.d >= this.level.finishD - 1) this.startMerge();
+    else if (player.center.d >= this.level.finishD - 1) this.finishRun();
   }
 
   checkGates() {
@@ -422,6 +428,40 @@ export class Game {
     return new THREE.Vector3(0, 3.4, toZ(this.level.boss.d) + 1.2);
   }
 
+  // The run is over: chest levels end at the chest, every other level in a boss fight.
+  finishRun() {
+    if (this.level.kind === 'chest') this.startChest();
+    else this.startMerge();
+  }
+
+  // ---- Chest: the crowd hops in one by one, the camera swings to the front, the lid jolts open ----
+  startChest() {
+    const { player, view } = this;
+    this.state = 'chest';
+    const count = player.count;
+    this.multiplier = bonusMultiplier(count / this.level.bestCount);
+    const { worldIndex } = levelInfo(this.level.level);
+    this.stageCoins = chestStageCoins(count, worldIndex);
+    const perBlob = coinsPerBlob(worldIndex);
+    let landed = 0;
+    const stage = new ChestStage(view.chest, this.effects, { seed: this.level.level, onDone: () => this.complete() });
+    this.chestStage = stage;
+    this.hud.showBanner('TREASURE!');
+
+    const bodies = player.take(player.units.length);
+    player.setCount(0);
+    const { approach, hopFlight, hopHeight } = CONFIG.chest;
+    const target = stage.center.add(new THREE.Vector3(0, 0, 1)); // the gap in the lid, at the front
+    hopDelays(bodies.length).forEach((delay, i) => this.flyInto(bodies[i], target, approach + delay, {
+      flight: hopFlight, height: hopHeight, landY: 2.4,
+      onLand: () => {
+        stage.thump();
+        landed += perBlob; // the coin counter ticks up with every blob that drops in
+        this.hud.setCoins(this.save.coins + this.runCoins + landed);
+      },
+    }));
+  }
+
   startMerge() {
     const { player, champion } = this;
     this.state = 'merge';
@@ -450,20 +490,22 @@ export class Game {
     });
   }
 
-  flyInto(body, target, delay) {
+  flyInto(body, target, delay, { flight = 0.4, height = 2, landY = 1.2, onLand } = {}) {
     const mesh = new THREE.Mesh(this.player.mesh.geometry, this.player.mesh.material);
     mesh.scale.setScalar(0.9);
     mesh.rotation.y = Math.PI;
     const from = new THREE.Vector3(body.x, 0, toZ(body.d));
-    const to = target.clone().setY(1.2);
-    const flight = 0.4;
+    const to = target.clone().setY(landY);
     this.effects.root.add(mesh);
     this.effects.tween(flight + delay, (k) => {
       const t = Math.max(0, (k * (flight + delay) - delay) / flight);
       mesh.position.lerpVectors(from, to, t);
-      mesh.position.y += Math.sin(t * Math.PI) * 2;
+      mesh.position.y += Math.sin(t * Math.PI) * height;
       mesh.scale.setScalar(0.9 * (1 - t * 0.6));
-    }, () => this.effects.root.remove(mesh));
+    }, () => {
+      this.effects.root.remove(mesh);
+      onLand?.();
+    });
   }
 
   later(seconds, callback) {
@@ -596,10 +638,10 @@ export class Game {
   complete() {
     this.state = 'complete';
     const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
-    let chest = 0;
+    let chest = this.stageCoins;
     if (this.keyTaken) this.save.keys += 1;
     if (this.save.keys >= CONFIG.keys.perChest) {
-      chest = chestReward(this.level.level);
+      chest += chestReward(this.level.level);
       this.save.keys = 0;
     }
     this.save.coins += reward + chest;
@@ -682,7 +724,7 @@ export class Game {
   // Both boxers bounce in guard and play their clips; calmer before the bell.
   animateBoxers(dt) {
     const energy = this.state === 'boxing' ? 1 : 0.35;
-    applyPose(this.view.boss, this.bossAnim.update(dt, idlePose(this.time, energy)));
+    if (this.view.boss) applyPose(this.view.boss, this.bossAnim.update(dt, idlePose(this.time, energy)));
     if (this.champion.root.visible) {
       applyPose(this.champion, this.championAnim.update(dt, idlePose(this.time, energy, 1.7)));
     }
@@ -703,8 +745,11 @@ export class Game {
         const kick = this.cameraKick * 2.5;
         return { pos: [13 - kick, 6.5 - kick * 0.3, mid + 5 - kick * 0.4], look: [0, 2.8, mid - 0.5] };
       }
+      case 'chest':
+        return this.chestStage.camera();
       case 'bonus':
       case 'complete': {
+        if (!this.view.boss) break; // chest levels: the chest stage owns the camera
         const { position } = this.view.boss.root;
         return { pos: [position.x, 17, position.z + 11], look: [position.x, 0, position.z - 4] };
       }
@@ -724,7 +769,7 @@ export class Game {
       cameraGoal.fromArray(focus.pos);
       lookGoal.fromArray(focus.look);
     }
-    const k = this.snapCamera ? 1 : Math.min(1, dt * (this.state === 'bonus' ? 7 : 4));
+    const k = this.snapCamera ? 1 : Math.min(1, dt * (this.state === 'bonus' || this.state === 'chest' ? 7 : 4));
     this.snapCamera = false;
     camera.position.lerp(cameraGoal, k);
     lookCurrent.lerp(lookGoal, k);
@@ -751,7 +796,7 @@ export class Game {
     }
 
     bubbleAnchor.set(0, 6.6, toZ(this.level.boss.d));
-    const showBossHp = this.state === 'running' || this.state === 'skirmish';
+    const showBossHp = this.level.kind !== 'chest' && (this.state === 'running' || this.state === 'skirmish');
     this.hud.placeBubble(this.bossBubble, bubbleAnchor, camera, this.level.boss.hp, showBossHp && inRange(this.level.boss.d));
   }
 }

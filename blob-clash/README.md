@@ -20,12 +20,13 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 - Cada fase tem um **obstáculo em destaque** (em ciclo: luvas/melancias, serras, bombas, pulo, armadilha, espinhos), então fases seguidas não se repetem.
 - **Multidões vermelhas** bloqueiam a pista: os dois lados se anulam um a um.
 - **Skins** (`src/skins.js`): o botão SKINS no menu abre a loja; skins se compram com moedas e vestem só o **líder da multidão** e o **campeão** da luta (o resto da multidão continua laranja). O catálogo é uma lista; os acessórios ficam em `src/art/skinModels.js`.
+- **Fase do baú** (`src/chest.js`, `src/chestStage.js`, `src/art/chest.js`): a pista termina num baú 3D gigante. Os blobs pulam dentro um a um (o contador de moedas sobe a cada um), a tampa bate, a câmera gira do lado para a frente com zoom (~1,2 s) e a tampa abre com um tranco, soltando 360 moedas 3D giratórias (um só `InstancedMesh`) que caem e somem sem deixar nada no chão. Cada blob vale mais moedas a cada mundo; o multiplicador e as estrelas vêm do tamanho da multidão que chegou. Tudo em `CONFIG.chest`.
 - **Moedas** na pista e **uma chave por fase**. Com 3 chaves, abre um **baú** de moedas.
 - **Boss:** a multidão se funde num campeão de luvas, que abre a luta com um **soco voador**.
   **TAP TO FIGHT!**: cada toque é um jab; o 5º toque seguido vira **JUMP PUNCH** (2,5× de dano).
   Multidão maior dá mais vida e soco mais forte; todo chefe derruba qualquer campeão em ~10 s, então é preciso tocar rápido.
 - **30 fases em 10 mundos de 3** (`src/worlds.js`): a fase 1 de cada mundo termina num **mini chefe** (um chefe do elenco
-  em 0,8×, na cor do mundo, só com jabs), a 2 no **chefão** do mundo e a 3 num baú de moedas (por enquanto ainda com luta).
+  em 0,8×, na cor do mundo, só com jabs), a 2 no **chefão** do mundo e a 3 num **baú de moedas** (sem luta).
   Cada mundo tem um obstáculo em destaque. A pressão (tamanho da pista, multidões inimigas, vida dos chefes) sobe dentro do
   mundo e dá um respiro quando o próximo começa; de 6 a 12 segmentos por fase.
 - **Chefes** (`src/bosses.js`), cada um com visual e golpe próprios; qual aparece em cada fase vem do mundo:

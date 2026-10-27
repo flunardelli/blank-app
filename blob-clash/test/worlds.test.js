@@ -33,7 +33,7 @@ test('bossForLevel reads the world: smaller coloured mini boss on level 1, world
   for (const [i, world] of WORLDS.entries()) {
     const [mini, boss, chest] = [1, 2, 3].map((slot) => bossForLevel(i * 3 + slot));
     assert.equal(boss.id, world.boss);
-    assert.equal(chest.id, world.boss, 'chest levels fall back to the world boss until the chest stage exists');
+    assert.equal(chest.id, world.boss, 'chest levels have no fight and answer with the world boss');
     assert.equal(mini.id, world.mini);
     assert.deepEqual(mini.colors, world.tint);
     const base = BOSSES.find((b) => b.id === world.mini);
