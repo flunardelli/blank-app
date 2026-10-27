@@ -25,6 +25,7 @@ export const glossy = (color, extra = {}) => new THREE.MeshStandardMaterial({ co
 
 // Vertical colour gradient baked into vertex colours (bottom -> top), like the jelly in the reference.
 export function paintGradient(geometry, bottom, top, y0, y1) {
+  geometry.userData.gradient = [y0, y1]; // remembered so repaintGradients() can re-skin the body later
   const position = geometry.getAttribute('position');
   const colors = new Float32Array(position.count * 3);
   const [low, high, out] = [new THREE.Color(bottom), new THREE.Color(top), new THREE.Color()];
@@ -34,6 +35,14 @@ export function paintGradient(geometry, bottom, top, y0, y1) {
   }
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   return geometry;
+}
+
+/** Re-bakes the gradient of every painted part under `root` in new colours (skins). */
+export function repaintGradients(root, { bottom, top }) {
+  root.traverse((node) => {
+    const range = node.geometry?.userData.gradient;
+    if (range) paintGradient(node.geometry, bottom, top, ...range);
+  });
 }
 
 // ---- Gummy humanoid (one merged geometry, instanced for the whole crowd) --------

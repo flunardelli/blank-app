@@ -11,7 +11,7 @@ export class Hud {
     this.topbar = $('topbar');
     this.progress = $('progress-fill');
     this.bubbles = $('bubbles');
-    this.screens = { menu: $('menu'), complete: $('complete'), lose: $('lose') };
+    this.screens = { title: $('title'), ending: $('ending'), map: $('map'), menu: $('menu'), complete: $('complete'), lose: $('lose') };
     this.pauseButton = $('pause-btn');
     this.pauseScreen = $('pause');
     this.keySlots = [...document.querySelectorAll('.key-slot')];
@@ -89,7 +89,7 @@ export class Hud {
 
   show(name) {
     Object.entries(this.screens).forEach(([key, el]) => { el.hidden = key !== name; });
-    this.topbar.classList.toggle('hidden-progress', name === 'menu');
+    this.topbar.classList.toggle('hidden-progress', ['menu', 'title', 'map'].includes(name));
     this.pauseButton.hidden = name !== null; // only offered while a level is being played
   }
 
@@ -102,13 +102,34 @@ export class Hud {
     this.pauseScreen.hidden = !visible;
   }
 
-  bindPause({ onPause, onResume }) {
+  bindPause({ onPause, onResume, onMap }) {
     this.pauseButton.addEventListener('click', onPause);
     $('pause-resume').addEventListener('click', onResume);
+    $('pause-map').addEventListener('click', onMap);
   }
 
-  showMenu({ level, upgrades, onBuy }) {
+  /** First screen: Continue (or Play when there is nothing to continue) and New game, which asks before erasing. */
+  showTitle({ level, hasProgress, onContinue, onNew, onMap }) {
+    const confirm = $('title-confirm');
+    const buttons = $('title-buttons');
+    const ask = (asking) => {
+      confirm.hidden = !asking;
+      buttons.hidden = asking;
+    };
+    ask(false);
+    $('title-continue').innerHTML = hasProgress ? `CONTINUAR<small>FASE ${level}</small>` : 'JOGAR';
+    $('title-continue').onclick = onContinue;
+    $('title-map').onclick = onMap;
+    $('title-new').hidden = !hasProgress;
+    $('title-new').onclick = () => ask(true);
+    $('title-confirm-no').onclick = () => ask(false);
+    $('title-confirm-yes').onclick = onNew;
+    this.show('title');
+  }
+
+  showMenu({ level, upgrades, onBuy, onMap }) {
     $('menu-level').textContent = `Level ${level}`;
+    $('menu-map').onclick = onMap;
     const cards = $('upgrade-cards');
     cards.replaceChildren(...upgrades.map((upgrade) => {
       const card = document.createElement('button');
@@ -125,15 +146,51 @@ export class Hud {
     this.show('menu');
   }
 
-  showComplete({ level, coins, multiplier, chest, onNext }) {
+  // Rows come from mapRows(); only squares that are not locked can be played.
+  // `celebrate` ({ done, unlocked }) stamps the square just beaten and bounces the one it unlocked.
+  showMap({ rows, onPlay, onBack, celebrate }) {
+    const kindMark = { mini: '🥊', boss: '👑', chest: '🎁' };
+    $('map-rows').replaceChildren(...rows.map(({ world, levels }) => {
+      const row = Object.assign(document.createElement('div'), { className: 'map-row' });
+      row.style.setProperty('--accent', world.accent);
+      const cells = levels.map(({ level, kind, status, stars }) => {
+        const cell = Object.assign(document.createElement('button'), { className: `map-cell ${status} ${kind}` });
+        cell.disabled = status === 'locked';
+        cell.setAttribute('aria-label', `Fase ${level}`);
+        cell.innerHTML = `<span class="mark">${status === 'locked' ? '🔒' : kindMark[kind]}</span><span class="num">${level}</span>`
+          + (stars ? `<span class="stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>` : '');
+        cell.onclick = () => onPlay(level);
+        if (celebrate?.done === level) cell.classList.add('just-done');
+        if (celebrate?.unlocked === level) cell.classList.add('just-unlocked');
+        return cell;
+      });
+      row.innerHTML = `<h2 class="ink">${world.name}</h2><div class="map-cells"></div>`;
+      row.querySelector('.map-cells').append(...cells);
+      return row;
+    }));
+    $('map-back').onclick = onBack;
+    this.show('map');
+    $('map-rows').querySelector('.just-done, .current')?.scrollIntoView({ block: 'center' });
+  }
+
+  showComplete({ level, coins, multiplier, chest, onNext, onMap }) {
     $('complete-level').textContent = `Level ${level}`;
     $('complete-chest').hidden = !chest;
     $('complete-chest').querySelector('span').textContent = `Chest +${chest}`;
     $('complete-coins').textContent = coins;
     $('complete-multiplier').textContent = `x${multiplier.toFixed(1)}`;
     $('complete-next').onclick = onNext;
+    $('complete-map').onclick = onMap;
     this.show('complete');
     this.confetti();
+  }
+
+  showEnding({ stars, maxStars, onMap, onTitle }) {
+    $('ending-stars').textContent = `${stars}/${maxStars}`;
+    $('ending-map').onclick = onMap;
+    $('ending-title').onclick = onTitle;
+    this.show('ending');
+    this.confetti('ending-confetti');
   }
 
   showLose({ coins, onContinue }) {
@@ -146,8 +203,8 @@ export class Hud {
     this.show(null);
   }
 
-  confetti() {
-    const layer = $('confetti');
+  confetti(layerId = 'confetti') {
+    const layer = $(layerId);
     const colors = ['#ff4d6d', '#4dabf7', '#51cf66', '#ffd43b', '#9775fa', '#22d3ee'];
     layer.replaceChildren(...Array.from({ length: 70 }, () => {
       const piece = document.createElement('i');

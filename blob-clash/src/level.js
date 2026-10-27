@@ -4,6 +4,11 @@ import { createRng } from './rng.js';
 import { applyGate, bestGate, bossDifficulty } from './rules.js';
 import { levelInfo } from './worlds.js';
 
+// Some segments open with two gate rows in a row. The gap is short enough that the crowd can still
+// cross the track between the rows (the test checks it against crowd.lateralSpeed), yet long enough
+// to read the second row. Chance grows with the campaign pressure; the first segment stays single.
+const DOUBLE_ROW = { gap: 5, baseChance: 0.15, pressureChance: 0.35 };
+
 const multiplyGate = (rng, cfg) => ({ op: 'x', value: rng.pick(cfg.multipliers) });
 const addGate = (rng, level, cfg) => ({ op: '+', value: rng.int(cfg.addMin, cfg.addMax + level) });
 
@@ -23,7 +28,7 @@ function makeGatePair(rng, d, level, cfg, forceGood) {
   if (!forceGood && rng.chance(cfg.badChance)) other = badGate(rng, cfg);
   else other = good.op === 'x' ? addGate(rng, level, cfg) : multiplyGate(rng, cfg);
   const [left, right] = rng.chance(0.5) ? [good, other] : [other, good];
-  return { d, left, right };
+  return { d, row: 0, left, right };
 }
 
 // One slider on a random edge, or a pair on both edges sliding in turns.
@@ -121,6 +126,8 @@ function makeCoinRow(rng, d, cfg) {
   return Array.from({ length: cfg.coins.perRow }, (_, i) => ({ x, d: d + i * cfg.coins.spacing }));
 }
 
+export const DOUBLE_ROW_GAP = DOUBLE_ROW.gap;
+
 export function generateLevel(level, cfg = CONFIG) {
   const rng = createRng(level * 7919 + 13);
   const { track } = cfg;
@@ -137,9 +144,13 @@ export function generateLevel(level, cfg = CONFIG) {
   let d = track.introLength;
 
   for (let s = 0; s < segments; s++, d += track.segmentLength) {
-    const pair = makeGatePair(rng, d, level, cfg.gates, s === 0);
-    gates.push(pair);
-    bestCount = applyGate(bestCount, bestGate(bestCount, pair), cfg.gates.maxCount);
+    const rowChance = DOUBLE_ROW.baseChance + DOUBLE_ROW.pressureChance * pressure;
+    const rows = s > 0 && rng.chance(rowChance) ? 2 : 1;
+    for (let row = 0; row < rows; row++) {
+      const pair = { ...makeGatePair(rng, d + row * DOUBLE_ROW.gap, level, cfg.gates, s === 0), row };
+      gates.push(pair);
+      bestCount = applyGate(bestCount, bestGate(bestCount, pair), cfg.gates.maxCount);
+    }
 
     coins.push(...makeCoinRow(rng, d + 6, cfg));
     obstacles.push(...makeObstacles(rng, d + 16, weights, cfg));

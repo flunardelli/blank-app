@@ -14,8 +14,10 @@ import {
   startBlobsFor, sweepX, upgradeCost,
 } from './rules.js';
 import { createSequences } from './cheat.js';
-import { completeLevel } from './progress.js';
-import { loadSave, writeSave } from './save.js';
+import { completeLevel, hasProgress, totalStars } from './progress.js';
+import { mapRows } from './map.js';
+import { LEVEL_COUNT } from './worlds.js';
+import { loadSave, resetSave, writeSave } from './save.js';
 
 const UPGRADES = [
   { id: 'damage', title: 'Damage', icon: '🥊' },
@@ -49,6 +51,49 @@ export class Game {
       if (cheats.feed(code, performance.now() / 1000) !== null) this.skipToBoss();
     });
     this.loadLevel(this.save.current);
+    this.showTitle();
+  }
+
+  // ---- Title screen -------------------------------------------------------------
+  // The level behind the title is already loaded, so Continue only has to reveal its menu.
+  showTitle() {
+    this.state = 'title';
+    this.hud.showTitle({
+      level: this.save.current,
+      hasProgress: hasProgress(this.save),
+      onContinue: () => this.leaveTitle(),
+      onMap: () => this.openMap(() => this.showTitle()),
+      onNew: () => {
+        this.save = resetSave();
+        this.loadLevel(this.save.current);
+      },
+    });
+  }
+
+  // Opens the map; `onBack` says where VOLTAR leads. Picking a square plays that level from its menu.
+  openMap(onBack = () => this.loadLevel(this.level.level), celebrate = null) {
+    this.state = 'map';
+    this.hud.showMap({
+      rows: mapRows(this.save),
+      onBack,
+      onPlay: (level) => this.loadLevel(level),
+      celebrate,
+    });
+  }
+
+  // After a win: the map stamps the beaten square, the next one unlocks with a bounce, then it starts.
+  celebrateOnMap(beaten) {
+    const next = this.save.current;
+    this.openMap(() => this.loadLevel(next), { done: beaten, unlocked: next });
+    const token = (this.mapToken = (this.mapToken ?? 0) + 1);
+    setTimeout(() => {
+      if (this.state === 'map' && this.mapToken === token) this.loadLevel(next);
+    }, CONFIG.campaign.celebrateMs);
+  }
+
+  leaveTitle() {
+    this.state = 'menu';
+    this.showMenu();
   }
 
   // ---- Level lifecycle ----------------------------------------------------------
@@ -99,6 +144,7 @@ export class Game {
         ...u, level: upgrades[u.id], cost: upgradeCost(upgrades[u.id]), affordable: coins >= upgradeCost(upgrades[u.id]),
       })),
       onBuy: (id) => this.buyUpgrade(id),
+      onMap: () => this.openMap(),
     });
   }
 
@@ -563,7 +609,19 @@ export class Game {
     this.hud.setKeys(this.save.keys);
     this.hud.showComplete({
       level: this.level.level, coins: reward, multiplier: this.multiplier, chest,
-      onNext: () => this.loadLevel(this.save.current),
+      onNext: () => (this.level.level >= LEVEL_COUNT ? this.showEnding() : this.celebrateOnMap(this.level.level)),
+      onMap: () => this.openMap(),
+    });
+  }
+
+  // After the last level: the whole campaign is beaten.
+  showEnding() {
+    this.state = 'ending';
+    this.hud.showEnding({
+      stars: totalStars(this.save),
+      maxStars: LEVEL_COUNT * 3,
+      onMap: () => this.openMap(() => this.showEnding()),
+      onTitle: () => this.showTitle(),
     });
   }
 

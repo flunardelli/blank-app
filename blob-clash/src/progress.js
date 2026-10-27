@@ -1,6 +1,7 @@
 // Pure save-data rules (no storage, no three.js) so they can be unit tested.
 import { CONFIG } from './config.js';
 import { LEVEL_COUNT } from './worlds.js';
+import { defaultSkins, normalizeSkins } from './skins.js';
 
 export const SAVE_VERSION = 3;
 
@@ -12,12 +13,18 @@ export const defaultSave = () => ({
   coins: 0,
   keys: 0,
   upgrades: { damage: 1, blobs: 1 },
+  skins: defaultSkins(),
 });
 
 export function starsFor(multiplier, [oneStarUpTo, twoStarsUpTo] = CONFIG.campaign.starsAt) {
   if (multiplier <= oneStarUpTo) return 1;
   return multiplier <= twoStarsUpTo ? 2 : 3;
 }
+
+// Anything worth protecting from "new game": a finished level, or having moved past the first one.
+export const hasProgress = (save) => save.current > 1 || Object.keys(save.completed).length > 0;
+
+export const totalStars = (save) => Object.values(save.completed).reduce((sum, { stars }) => sum + stars, 0);
 
 export const isUnlocked = (save, level) => Number.isInteger(level) && level >= 1 && level <= save.unlocked;
 
@@ -77,5 +84,6 @@ export function normalizeSave(raw, levels = LEVEL_COUNT) {
       damage: Math.max(1, count(raw.upgrades?.damage)),
       blobs: Math.max(1, count(raw.upgrades?.blobs)),
     },
+    skins: normalizeSkins(raw.skins), // saves from before skins existed just get the default
   };
 }

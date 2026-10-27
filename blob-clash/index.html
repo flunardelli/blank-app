@@ -45,17 +45,47 @@
   <div id="banner" class="ink" hidden></div>
   <div id="pop" class="ink" hidden></div>
 
+  <section id="title" class="screen" hidden>
+    <h1 class="stacked logo"><span class="ink">BLOB</span><span class="ink big yellow">CLASH</span></h1>
+    <div id="title-buttons">
+      <button id="title-continue" class="btn cyan ink">CONTINUAR</button>
+      <button id="title-map" class="btn yellow ink">MAPA</button>
+      <button id="title-new" class="btn pink ink">NOVO JOGO</button>
+    </div>
+    <div id="title-confirm" class="panel" hidden>
+      <p class="ink">Apagar seu progresso, moedas e melhorias e começar do zero?</p>
+      <div class="row">
+        <button id="title-confirm-yes" class="btn pink small ink">APAGAR</button>
+        <button id="title-confirm-no" class="btn cyan small ink">VOLTAR</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="map" class="screen" hidden>
+    <h1 class="ink title">MAPA</h1>
+    <div id="map-rows"></div>
+    <button id="map-back" class="btn cyan small ink">VOLTAR</button>
+  </section>
+
   <section id="menu" class="screen" hidden>
     <h1 id="menu-level" class="ink title">Level 1</h1>
+    <button id="menu-map" class="btn yellow small ink">MAPA</button>
     <div class="hint">
       <p class="ink">Hold&amp;Drag to move</p>
       <div class="hint-track"><span class="hint-hand">👆</span></div>
     </div>
     <div id="upgrade-cards"></div>
+    <button id="skins-btn" class="btn cyan ink">SKINS</button>
+  </section>
+
+  <section id="skins" class="screen dim" hidden>
+    <h1 class="stacked"><span class="ink big">SKINS</span></h1>
+    <div id="skin-cards"></div>
+    <button id="skins-back" class="btn cyan ink">BACK</button>
   </section>
 
   <section id="complete" class="screen dim" hidden>
-    <div id="confetti"></div>
+    <div id="confetti" class="confetti"></div>
     <h1 class="stacked"><span id="complete-level" class="ink">Level 1</span><span class="ink big yellow">COMPLETE!</span></h1>
     <div class="reward">
       <i class="coin-icon huge"></i>
@@ -64,6 +94,15 @@
     </div>
     <div id="complete-chest" class="chest ink" hidden>🎁 <span></span></div>
     <button id="complete-next" class="btn cyan ink">NEXT</button>
+    <button id="complete-map" class="btn yellow small ink">MAPA</button>
+  </section>
+
+  <section id="ending" class="screen dim" hidden>
+    <div id="ending-confetti" class="confetti"></div>
+    <h1 class="stacked"><span class="ink">VOCÊ ZEROU!</span><span class="ink big yellow">PARABÉNS</span></h1>
+    <div class="reward"><span id="ending-stars" class="ink">0/90</span><span class="ink">★</span></div>
+    <button id="ending-map" class="btn cyan ink">MAPA</button>
+    <button id="ending-title" class="btn pink small ink">INÍCIO</button>
   </section>
 
   <section id="lose" class="screen dim" hidden>
@@ -75,6 +114,7 @@
   <section id="pause" class="screen dim" hidden>
     <h1 class="stacked"><span class="ink big">PAUSED</span></h1>
     <button id="pause-resume" class="btn cyan ink">CONTINUE</button>
+    <button id="pause-map" class="btn yellow small ink">MAPA</button>
   </section>
 
   <script type="module" src="src/main.js"></script>

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { completeLevel, defaultSave, isUnlocked, migrateV2, normalizeSave, starsFor } from '../src/progress.js';
+import { completeLevel, defaultSave, hasProgress, isUnlocked, migrateV2, normalizeSave, starsFor, totalStars } from '../src/progress.js';
 
 test('starsFor: x1-x2 is one star, up to x4 two, above three', () => {
   assert.deepEqual([1, 2, 2.2, 4, 4.2, 5].map((m) => starsFor(m)), [1, 1, 2, 2, 3, 3]);
@@ -67,4 +67,17 @@ test('corrupted or foreign saves fall back to the defaults', () => {
 test('a valid v3 save round-trips unchanged', () => {
   const save = completeLevel(completeLevel(defaultSave(), 1, 3), 2, 5);
   assert.deepEqual(normalizeSave(JSON.parse(JSON.stringify(save))), save);
+});
+
+test('hasProgress: only a fresh save has nothing to lose', () => {
+  assert.equal(hasProgress(defaultSave()), false);
+  assert.equal(hasProgress(completeLevel(defaultSave(), 1, 1)), true);
+  assert.equal(hasProgress({ ...defaultSave(), current: 4 }), true);
+});
+
+test('totalStars adds the best stars of every beaten level', () => {
+  let save = completeLevel(defaultSave(), 1, 5); // 3 stars
+  save = completeLevel(save, 2, 1); // 1 star
+  save = completeLevel(save, 1, 1); // replay never lowers the stars
+  assert.equal(totalStars(save), 4);
 });
