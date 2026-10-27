@@ -38,3 +38,22 @@ export function resetSave() {
   writeSave(save);
   return save;
 }
+
+// The sound preference lives apart from the progress save, so "new game" doesn't flip it.
+const MUTE_KEY = 'blob-clash.muted';
+
+export function loadMuted() {
+  try {
+    return localStorage.getItem(MUTE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function writeMuted(muted) {
+  try {
+    localStorage.setItem(MUTE_KEY, muted ? '1' : '0');
+  } catch {
+    // the choice just isn't remembered
+  }
+}

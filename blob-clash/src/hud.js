@@ -1,6 +1,8 @@
 // DOM overlay: coins, progress, count bubbles and the menu / complete / lose screens.
 import * as THREE from 'three';
 import { formatCoins } from './rules.js';
+import { CONFIG } from './config.js';
+import { overflow } from './emoji.js';
 
 const projected = new THREE.Vector3();
 const $ = (id) => document.getElementById(id);
@@ -20,6 +22,36 @@ export class Hud {
     this.hpPlayer = $('hp-player');
     this.hpBoss = $('hp-boss');
     this.dodgeHint = $('dodge-hint');
+    this.emojis = []; // live emoji balloons, oldest first
+    this.soundButton = $('sound-btn');
+  }
+
+  /** The mute button: `onToggle` flips the preference, `muted` is its current state. */
+  bindSound({ muted, onToggle }) {
+    const paint = (isMuted) => {
+      this.soundButton.textContent = isMuted ? '🔇' : '🔊';
+      this.soundButton.setAttribute('aria-pressed', String(isMuted));
+    };
+    paint(muted);
+    this.soundButton.addEventListener('click', () => paint(onToggle()));
+  }
+
+  /** A balloon with `face` floating up from a 3D position; at most CONFIG.emoji.max at once, and each lasts lifeMs. */
+  showEmoji(face, worldPosition, camera) {
+    const { max, lifeMs } = CONFIG.emoji;
+    overflow(this.emojis, max).forEach((old) => this.removeEmoji(old));
+    const el = Object.assign(document.createElement('div'), { className: 'emoji-bubble', textContent: face });
+    el.style.animationDuration = `${lifeMs}ms`;
+    this.placeBubble(el, worldPosition, camera, face);
+    this.bubbles.append(el);
+    this.emojis.push(el);
+    el.timer = setTimeout(() => this.removeEmoji(el), lifeMs);
+  }
+
+  removeEmoji(el) {
+    clearTimeout(el.timer);
+    el.remove();
+    this.emojis = this.emojis.filter((e) => e !== el);
   }
 
   setLevel(level) {
@@ -82,6 +114,8 @@ export class Hud {
   }
 
   clearBubbles() {
+    this.emojis.forEach((el) => clearTimeout(el.timer));
+    this.emojis = [];
     this.bubbles.replaceChildren();
   }
 

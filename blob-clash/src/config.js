@@ -263,6 +263,27 @@ export const CONFIG = {
     },
     wobbleMaxStep: 1 / 40, // seconds: bigger frame gaps are split so the springs stay stable
   },
+  // Synthesized sound (src/audio.js). A note is { f: Hz, to?: Hz glide target, at: s offset, d: s length, type, gain }.
+  audio: {
+    master: 0.5,
+    musicGain: 0.22,
+    musicTempo: 0.2, // seconds per step of the looping tune
+    musicLookahead: 1.2, // seconds of music scheduled ahead of the clock
+    musicTick: 400, // ms between scheduler runs
+    musicScale: [261.6, 329.6, 392, 523.3, 392, 329.6], // C major arpeggio, one note per step
+    musicBass: [130.8, 130.8, 98, 98], // one bass note per bar of 6 steps (cycles)
+    vibrateMs: { heavy: 40, knockOut: [60, 40, 90] },
+  },
+  // Emoji bubbles over the crowd (src/hud.js): few, short, and never more than `max` on screen.
+  emoji: {
+    max: 2,
+    lifeMs: 1200,
+    cooldownMs: 700, // between two bubbles of the same mood, so a pile-up of losses isn't a swarm
+    bigCrowd: 20, // blobs at the boss that earn the cool face
+    goodGate: '😀',
+    bigCrowdFace: '😎',
+    loss: '😮',
+  },
   reward: { base: 50, perLevel: 10 },
   upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
 };
