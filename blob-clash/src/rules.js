@@ -61,6 +61,17 @@ export function sliderX({ edgeX, reach, speed, phase }, time) {
   return edgeX - Math.sign(edgeX) * inset;
 }
 
+const pusherInset = ({ reach, speed, phase }, time) => reach * (0.5 - 0.5 * Math.cos(speed * time + phase));
+
+/** The pusher block: its inner face slides `reach` units in from the rail and back (slider rhythm). */
+export function pusherBox(pusher, time) {
+  const { edgeX, halfWidth, halfDepth, d } = pusher;
+  return { x: edgeX - Math.sign(edgeX) * (pusherInset(pusher, time) - halfWidth), d, halfWidth, halfDepth };
+}
+
+/** Free width between the pusher's inner face and the opposite rail. */
+export const pusherGap = (pusher, time, trackWidth = CONFIG.track.width) => trackWidth - pusherInset(pusher, time);
+
 // Saw blades and walkers swing across the track: x = range · sin(speed · t + phase).
 export const sweepX = ({ range, speed, phase }, time) => range * Math.sin(speed * time + phase);
 
@@ -103,6 +114,7 @@ export function obstacleHits(obstacle, time, x, d, r) {
     return axeIsLow(obstacle, time)
       && circleHitsBox(x, d, r, { x: axeBladeX(obstacle, time), d: obstacle.d, halfWidth: obstacle.halfWidth, halfDepth: obstacle.halfDepth });
   }
+  if (obstacle.kind === 'pusher') return circleHitsBox(x, d, r, pusherBox(obstacle, time));
   if (!obstacle.pads) return false; // ramps and bombs are handled by the game loop
   return obstacle.pads.some((pad) => circleHitsBox(x, d, r, { ...pad, d: obstacle.d }));
 }

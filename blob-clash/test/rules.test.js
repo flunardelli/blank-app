@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyGate, bestGate, blastVictims, jumpLift, onRamp, sweepX, bonusMultiplier, bossPunchDamage, championStats, circleHitsBox, clashStep,
-  crowdSpacing, formationRadius, formatCoins, gateLabel, axeAngle, axeBladeX, axeIsLow, obstacleHits, pressesButton, requiredTapRate,
+  crowdSpacing, formationRadius, formatCoins, gateLabel, axeAngle, axeBladeX, axeIsLow, obstacleHits, pusherBox, pusherGap, pressesButton, requiredTapRate,
   rewardCoins, upgradeCost, jellyPhase,
 } from '../src/rules.js';
 
@@ -169,4 +169,35 @@ test('the axe cuts only while the blade hangs low, at three moments of the swing
   assert.ok(obstacleHits(axe, swinging, axeBladeX(axe, swinging), 10, 0.3));
   assert.ok(!obstacleHits(axe, swinging, -axeBladeX(axe, swinging), 10, 0.3));
   assert.ok(!obstacleHits(axe, 0, 0, 14, 0.3), 'only at its own distance');
+});
+
+test('the pusher block hits only where it has slid to, at three moments', () => {
+  // Left rail at x = -5; inner face starts at the rail and slides 2.8 in. Period = 2π / 1 s.
+  const pusher = { kind: 'pusher', d: 10, edgeX: -5, halfWidth: 1.8, halfDepth: 1.1, reach: 2.8, speed: 1, phase: 0 };
+  const retracted = 0;
+  const half = Math.PI; // fully extended
+  const quarter = Math.PI / 2; // half way in
+  assert.equal(pusherBox(pusher, retracted).x, -5 - 1.8, 'retracted: the whole block waits outside the rail');
+  assert.ok(!obstacleHits(pusher, retracted, -4.5, 10, 0.3), 'retracted: the track is clear');
+  // Half way: inner face 1.4 in from the rail, at x = -3.6.
+  assert.ok(obstacleHits(pusher, quarter, -3.9, 10, 0.3));
+  assert.ok(!obstacleHits(pusher, quarter, -3.0, 10, 0.3));
+  // Fully in: face at -2.2.
+  assert.ok(obstacleHits(pusher, half, -2.6, 10, 0.3));
+  assert.ok(!obstacleHits(pusher, half, -1.8, 10, 0.3));
+  assert.ok(!obstacleHits(pusher, half, -2.6, 14, 0.3), 'only at its own distance');
+  assert.ok(Math.abs(pusherGap(pusher, half) - 7.2) < 1e-9, 'extended: 10 - 2.8 units left');
+  assert.equal(pusherGap(pusher, retracted), 10);
+  // The mirrored block on the right rail behaves the same way.
+  const right = { ...pusher, edgeX: 5 };
+  assert.ok(obstacleHits(right, half, 2.6, 10, 0.3));
+  assert.ok(!obstacleHits(right, half, -2.6, 10, 0.3));
+});
+
+test('spiked pillars kill whoever touches a pad, and leave the middle open', () => {
+  const pillars = { kind: 'pillars', d: 10, pads: [-1, 1].map((s) => ({ x: s * 4.25, halfWidth: 0.75, halfDepth: 0.7 })) };
+  assert.ok(obstacleHits(pillars, 0, -4.0, 10, 0.3));
+  assert.ok(obstacleHits(pillars, 0, 4.4, 10.5, 0.3));
+  assert.ok(!obstacleHits(pillars, 0, 0, 10, 0.3));
+  assert.ok(!obstacleHits(pillars, 0, -4.0, 12, 0.3), 'only at its own distance');
 });
