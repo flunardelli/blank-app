@@ -116,3 +116,41 @@ export function createBomb(radius) {
   group.add(pad, ring, shell, neck, fuse, spark);
   return { group, spark, ring };
 }
+
+/**
+ * Pendulum axe on a gantry over the track. Swing `pivot.rotation.z`: the blade centre sits `length`
+ * below the pivot, which is `pivotHeight` above the floor.
+ */
+export function createAxe(length, pivotHeight, halfWidth) {
+  const half = CONFIG.track.width / 2 + 0.3;
+  const group = new THREE.Group();
+  const frame = glossy(PALETTE.sawRail);
+  const posts = [-1, 1].map((side) => {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, pivotHeight + 0.4, 0.4), frame);
+    post.position.set(side * half, (pivotHeight + 0.4) / 2, 0);
+    return post;
+  });
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(half * 2 + 0.4, 0.4, 0.5), frame);
+  beam.position.y = pivotHeight + 0.2;
+
+  const pivot = new THREE.Group();
+  pivot.position.y = pivotHeight;
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, length, 8), glossy(PALETTE.axeHandle));
+  arm.position.y = -length / 2;
+  // Crescent head: flat top against the arm, curved cutting edge underneath.
+  const head = new THREE.Shape();
+  head.moveTo(-halfWidth, 0.45);
+  head.lineTo(halfWidth, 0.45);
+  head.quadraticCurveTo(halfWidth * 1.2, -0.35, 0, -0.6);
+  head.quadraticCurveTo(-halfWidth * 1.2, -0.35, -halfWidth, 0.45);
+  const blade = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(head, { depth: 0.22, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.04, bevelSegments: 1 }),
+    glossy(PALETTE.axe, { roughness: 0.2, metalness: 0.5 }),
+  );
+  blade.position.set(0, -length, -0.11);
+  pivot.add(arm, blade);
+
+  group.add(...posts, beam, pivot);
+  group.traverse((o) => { o.castShadow = true; });
+  return { group, pivot };
+}

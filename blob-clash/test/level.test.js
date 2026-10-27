@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { axeIsLow } from '../src/rules.js';
 import { DOUBLE_ROW_GAP, generateLevel, hazardWeights } from '../src/level.js';
 import { CONFIG } from '../src/config.js';
 import { bossDifficulty, isGoodGate, requiredTapRate } from '../src/rules.js';
@@ -97,6 +98,32 @@ test('bomb rows alternate sides and leave room for the biggest crowd', () => {
       row.forEach((b) => assert.ok(Math.abs(b.x - nearestBody) > b.radius + unitRadius, `level ${n}: no way past`));
     });
     for (let i = 1; i < rows.length; i += 2) assert.notEqual(side(rows[i - 1]), side(rows[i]));
+  }
+});
+
+test('axes are raised long enough for the biggest crowd to cross, and stay out of the early worlds', () => {
+  const { forwardSpeed, maxRadius } = CONFIG.crowd;
+  const crossing = (2 * maxRadius) / forwardSpeed; // seconds the largest crowd takes to cross the axe line
+  const axes = [];
+  for (let n = 1; n <= 30; n++) {
+    const found = generateLevel(n).obstacles.filter((o) => o.kind === 'axe');
+    if (n < CONFIG.obstacle.unlockLevel.axe) assert.equal(found.length, 0, `level ${n}: axe too early`);
+    axes.push(...found);
+  }
+  assert.ok(axes.length > 0, 'axes show up in the campaign');
+  for (const axe of axes) {
+    // Sample a full period: the longest raised stretch must cover the crossing, and the blade must stay
+    // narrower than the track so the crowd can always slip past the low blade.
+    const period = (2 * Math.PI) / axe.speed;
+    let raised = 0;
+    let longest = 0;
+    for (let t = 0; t < 2 * period; t += 0.01) {
+      raised = axeIsLow(axe, t) ? 0 : raised + 0.01;
+      longest = Math.max(longest, raised);
+    }
+    assert.ok(longest > crossing * 1.5, `axe at ${axe.d}: raised window too short`);
+    assert.ok(2 * (axe.halfWidth + CONFIG.crowd.unitRadius) < CONFIG.track.width / 2);
+    assert.ok(axe.length * Math.sin(axe.swing) >= CONFIG.track.width / 2 - 1, 'swings edge to edge');
   }
 });
 

@@ -7,10 +7,11 @@ import {
   gummyMaterial, humanoidGeometry,
 } from './art/models.js';
 import { createBoss, createChampion } from './art/boxer.js';
-import { createBomb, createRamp, createSaw, createSawRail } from './art/hazards.js';
+import { createAxe, createBomb, createRamp, createSaw, createSawRail } from './art/hazards.js';
 import { bossForLevel } from './bosses.js';
 import { makeJelly, withJellyPhases } from './art/jelly.js';
 import { Crowd } from './crowd.js';
+import { axeAngle, sliderX, sweepX } from './rules.js';
 
 export const toZ = (d) => -d;
 
@@ -46,6 +47,21 @@ function buildSlider(obstacle) {
   return { object: holder, springGlove };
 }
 
+// Sliders either push a spring glove's fist out of its pillar or slide a melon in and out.
+function sliderUpdater(obstacle, { object, springGlove }) {
+  return (time) => {
+    const x = sliderX(obstacle, time);
+    const inset = Math.abs(x - obstacle.edgeX);
+    if (springGlove) {
+      springGlove.fist.position.x = x - obstacle.edgeX;
+      springGlove.spring.scale.x = Math.max(0.05, inset - 0.3);
+    } else {
+      object.position.x = x;
+      object.rotation.z = Math.sign(obstacle.edgeX) * (inset / obstacle.reach) * 0.6;
+    }
+  };
+}
+
 export function buildLevelView(scene, level) {
   const root = new THREE.Group();
   scene.add(root);
@@ -70,20 +86,46 @@ export function buildLevelView(scene, level) {
     if (obstacle.kind === 'slider') {
       const view = buildSlider(obstacle);
       place(view.object, obstacle.d, obstacle.skin === 'glove' ? obstacle.edgeX : 0);
-      return { obstacle, ...view };
+      return { obstacle, ...view, update: sliderUpdater(obstacle, view) };
     }
     if (obstacle.kind === 'saw') {
       const group = place(createSawRail(), obstacle.d);
       const saw = createSaw(obstacle.radius);
       group.add(saw.group);
-      return { obstacle, object: group, saw };
+      return {
+        obstacle,
+        object: group,
+        saw,
+        update(time, dt) {
+          saw.group.position.x = sweepX(obstacle, time);
+          // Roll in the direction of travel (the derivative of sweepX).
+          saw.blade.rotation.z -= dt * 14 * Math.sign(Math.cos(obstacle.speed * time + obstacle.phase) || 1);
+        },
+      };
+    }
+    if (obstacle.kind === 'axe') {
+      const axe = createAxe(obstacle.length, obstacle.pivotHeight, obstacle.halfWidth);
+      return {
+        obstacle,
+        object: place(axe.group, obstacle.d),
+        update(time) { axe.pivot.rotation.z = axeAngle(obstacle, time); },
+      };
     }
     if (obstacle.kind === 'ramp') {
       return { obstacle, object: place(createRamp(obstacle.halfWidth, obstacle.halfDepth), obstacle.d, obstacle.x) };
     }
     if (obstacle.kind === 'bomb') {
       const bomb = createBomb(obstacle.radius);
-      return { obstacle, object: place(bomb.group, obstacle.d, obstacle.x), bomb, armed: true };
+      return {
+        obstacle,
+        object: place(bomb.group, obstacle.d, obstacle.x),
+        bomb,
+        armed: true,
+        update(time) {
+          bomb.spark.scale.setScalar(0.8 + Math.abs(Math.sin(time * 18 + obstacle.d)) * 0.6);
+          bomb.ring.material.emissiveIntensity = 0.5 + Math.sin(time * 5 + obstacle.x) * 0.4;
+        },
+      };
     }
     if (obstacle.kind === 'trap') {
       const field = createSpikeField(obstacle.halfDepth);
@@ -145,6 +187,10 @@ export function buildLevelView(scene, level) {
     key,
     boss,
     ladder,
+    /** Animates every moving hazard; a new hazard only needs an `update(time, dt)` on its entry. */
+    update(time, dt) {
+      obstacles.forEach((entry) => entry.update?.(time, dt));
+    },
     dispose() {
       enemies.forEach(({ crowd }) => crowd.mesh.dispose());
       scene.remove(root);

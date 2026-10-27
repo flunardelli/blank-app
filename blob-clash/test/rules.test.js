@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyGate, bestGate, blastVictims, jumpLift, onRamp, sweepX, bonusMultiplier, bossPunchDamage, championStats, circleHitsBox, clashStep,
-  crowdSpacing, formationRadius, formatCoins, gateLabel, obstacleHits, pressesButton, requiredTapRate,
+  crowdSpacing, formationRadius, formatCoins, gateLabel, axeAngle, axeBladeX, axeIsLow, obstacleHits, pressesButton, requiredTapRate,
   rewardCoins, upgradeCost, jellyPhase,
 } from '../src/rules.js';
 
@@ -149,4 +149,24 @@ test('jelly phases stay in one turn and keep bodies out of step', () => {
   assert.ok(phases.every((p) => p >= 0 && p < Math.PI * 2));
   assert.equal(new Set(phases.map((p) => p.toFixed(6))).size, phases.length);
   assert.ok(phases.slice(1).every((p, i) => Math.abs(p - phases[i]) > 0.5 || Math.abs(p - phases[i]) > Math.PI * 2 - 0.5));
+});
+
+test('the axe cuts only while the blade hangs low, at three moments of the swing', () => {
+  const axe = { kind: 'axe', d: 10, length: 5.6, pivotHeight: 6.4, swing: 0.95, speed: 1, phase: 0, halfWidth: 0.9, halfDepth: 0.3, clearance: 1.6 };
+  // t = 0: hanging straight down, low and centred.
+  assert.equal(axeAngle(axe, 0), 0);
+  assert.ok(axeIsLow(axe, 0));
+  assert.ok(obstacleHits(axe, 0, 0.5, 10, 0.3));
+  assert.ok(!obstacleHits(axe, 0, 3, 10, 0.3), 'beside the blade is safe');
+  // Quarter period: top of the swing, blade out at the side and above head height.
+  const top = Math.PI / 2;
+  assert.ok(!axeIsLow(axe, top));
+  assert.ok(Math.abs(axeBladeX(axe, top)) > 4.5, 'reaches the track edge');
+  assert.ok(!obstacleHits(axe, top, axeBladeX(axe, top), 10, 0.3), 'raised blade cuts nobody');
+  // In between: low again but already off to the side, so the centre is clear.
+  const swinging = 0.4; // angle 0.95 · sin(0.4) ≈ 0.37 rad
+  assert.ok(axeIsLow(axe, swinging));
+  assert.ok(obstacleHits(axe, swinging, axeBladeX(axe, swinging), 10, 0.3));
+  assert.ok(!obstacleHits(axe, swinging, -axeBladeX(axe, swinging), 10, 0.3));
+  assert.ok(!obstacleHits(axe, 0, 0, 14, 0.3), 'only at its own distance');
 });

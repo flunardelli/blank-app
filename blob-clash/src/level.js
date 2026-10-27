@@ -71,6 +71,20 @@ function makeSaws(rng, d, cfg) {
   return rng.chance(0.5) ? [saw(rng, d, cfg)] : [saw(rng, d, cfg), saw(rng, d + 3.5, cfg, Math.PI)];
 }
 
+function axe(rng, d, cfg, phaseOffset = 0) {
+  const ob = cfg.obstacle;
+  return {
+    kind: 'axe', d, length: ob.axeLength, pivotHeight: ob.axePivotHeight, swing: ob.axeSwing,
+    halfWidth: ob.axeHalfWidth, halfDepth: ob.axeHalfDepth, clearance: ob.axeClearance,
+    speed: ob.axeSpeed * (0.9 + rng.next() * 0.2), phase: rng.next() * Math.PI * 2 + phaseOffset,
+  };
+}
+
+// One pendulum axe, or two a few units apart swinging in opposite phase.
+function makeAxes(rng, d, cfg) {
+  return rng.chance(0.5) ? [axe(rng, d, cfg)] : [axe(rng, d, cfg), axe(rng, d + 4.5, cfg, Math.PI)];
+}
+
 // A ramp that does not cover the whole track, with saws behind it: take the ramp and fly over them.
 function makeJump(rng, d, cfg) {
   const ob = cfg.obstacle;
@@ -90,7 +104,7 @@ function makeBombs(rng, d, cfg) {
 }
 
 const OBSTACLE_MAKERS = {
-  slider: makeSliders, spikes: makeSpikes, trap: makeTrap, saw: makeSaws, jump: makeJump, bombs: makeBombs,
+  slider: makeSliders, spikes: makeSpikes, trap: makeTrap, saw: makeSaws, jump: makeJump, bombs: makeBombs, axe: makeAxes,
 };
 
 /** Hazard weights for a level: only unlocked kinds, with this level's featured kind boosted. */

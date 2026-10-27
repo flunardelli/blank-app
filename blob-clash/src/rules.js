@@ -64,6 +64,13 @@ export function sliderX({ edgeX, reach, speed, phase }, time) {
 // Saw blades and walkers swing across the track: x = range · sin(speed · t + phase).
 export const sweepX = ({ range, speed, phase }, time) => range * Math.sin(speed * time + phase);
 
+// Axe pendulum: angle = swing · sin(speed · t + phase). The blade centre hangs `length` below the pivot.
+export const axeAngle = ({ swing, speed, phase }, time) => swing * Math.sin(speed * time + phase);
+export const axeBladeX = (axe, time) => axe.length * Math.sin(axeAngle(axe, time));
+export const axeBladeHeight = (axe, time) => axe.pivotHeight - axe.length * Math.cos(axeAngle(axe, time));
+/** The blade cuts only while it hangs low: out at the ends of the swing it is above everyone's head. */
+export const axeIsLow = (axe, time) => axeBladeHeight(axe, time) < axe.clearance;
+
 /** Height of a blob `distance` units after leaving a jump ramp; 0 once it has landed. */
 export function jumpLift(distance, length, height = CONFIG.obstacle.jumpHeight) {
   if (distance < 0 || distance > length) return 0;
@@ -91,6 +98,10 @@ export function obstacleHits(obstacle, time, x, d, r) {
   if (obstacle.kind === 'trap') return Math.abs(d - obstacle.d) < obstacle.halfDepth + r; // full width
   if (obstacle.kind === 'saw') {
     return circleHitsBox(x, d, r, { x: sweepX(obstacle, time), d: obstacle.d, halfWidth: obstacle.radius, halfDepth: obstacle.halfDepth });
+  }
+  if (obstacle.kind === 'axe') {
+    return axeIsLow(obstacle, time)
+      && circleHitsBox(x, d, r, { x: axeBladeX(obstacle, time), d: obstacle.d, halfWidth: obstacle.halfWidth, halfDepth: obstacle.halfDepth });
   }
   if (!obstacle.pads) return false; // ramps and bombs are handled by the game loop
   return obstacle.pads.some((pad) => circleHitsBox(x, d, r, { ...pad, d: obstacle.d }));

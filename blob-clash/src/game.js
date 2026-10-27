@@ -10,7 +10,7 @@ import { bossForLevel } from './bosses.js';
 import { attackStats, BOSS_MOVES, CHAMPION_MOVES, GUARD, idlePose, KNOCKED_OUT, REACTIONS } from './moves.js';
 import {
   applyGate, blastVictims, bonusMultiplier, bossPunchDamage, championStats, chestReward, chooseGate, circlesOverlap,
-  clashRate, clashStep, comboStep, crossesObstacle, jumpLift, onRamp, pressesButton, rewardCoins, sliderX,
+  clashRate, clashStep, comboStep, crossesObstacle, jumpLift, onRamp, pressesButton, rewardCoins,
   startBlobsFor, sweepX, upgradeCost,
 } from './rules.js';
 import { createSequences } from './cheat.js';
@@ -639,31 +639,7 @@ export class Game {
 
   // ---- Presentation -------------------------------------------------------------
   animateScene(dt) {
-    for (const { obstacle, object, springGlove } of this.view.obstacles) {
-      if (obstacle.kind !== 'slider') continue;
-      const x = sliderX(obstacle, this.time);
-      const inset = Math.abs(x - obstacle.edgeX);
-      if (springGlove) {
-        springGlove.fist.position.x = x - obstacle.edgeX;
-        springGlove.spring.scale.x = Math.max(0.05, inset - 0.3);
-      } else {
-        object.position.x = x;
-        object.rotation.z = Math.sign(obstacle.edgeX) * (inset / obstacle.reach) * 0.6;
-      }
-    }
-    for (const { obstacle, saw, bomb } of this.view.obstacles) {
-      if (saw) {
-        const x = sweepX(obstacle, this.time);
-        saw.group.position.x = x;
-        // Roll in the direction of travel (the derivative of sweepX).
-        saw.blade.rotation.z -= dt * 14 * Math.sign(Math.cos(obstacle.speed * this.time + obstacle.phase) || 1);
-      }
-      if (bomb) {
-        const fizz = 0.8 + Math.abs(Math.sin(this.time * 18 + obstacle.d)) * 0.6;
-        bomb.spark.scale.setScalar(fizz);
-        bomb.ring.material.emissiveIntensity = 0.5 + Math.sin(this.time * 5 + obstacle.x) * 0.4;
-      }
-    }
+    this.view.update(this.time, dt);
     for (const { walker, mesh, alive } of this.view.walkers) {
       if (!alive) continue;
       const step = this.time * 9 + walker.phase;

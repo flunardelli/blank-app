@@ -22,6 +22,8 @@ export const PALETTE = {
   mat: 0xa8687f,
   spikeBase: 0x4a2c9c,
   spike: 0xe8433f,
+  axe: 0xcfd6ee,
+  axeHandle: 0x8a5a3a,
   saw: 0x7d5ce0,
   sawTeeth: 0xff7a3a,
   sawRail: 0x2e2466,
@@ -79,8 +81,8 @@ export const CONFIG = {
     trapButtonRadius: 0.9,
     // Hazard pool: each kind unlocks at a level, and every level features its world's kind
     // (weight × featuredBoost), so neighbouring worlds feel different.
-    weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35 },
-    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3 },
+    weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35, axe: 0.35 },
+    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3, axe: 7 }, // axe: first level of world 3
     featuredBoost: 3,
     spikeHalfDepth: 1.1,
     // Spike pads hug the track edges (like the reference): [centre x, half width] per pad.
@@ -94,6 +96,15 @@ export const CONFIG = {
     sawRadius: 0.9,
     sawHalfDepth: 0.25,
     sawSpeed: 1.0,
+    // Axe: a pendulum hung over the track. It swings by +-axeSwing radians; the blade only cuts while
+    // it is low (its centre below axeClearance), and swings out of reach near the ends of the arc.
+    axeLength: 5.6, // pivot to blade centre
+    axePivotHeight: 6.4,
+    axeSwing: 0.95,
+    axeSpeed: 1.5,
+    axeHalfWidth: 0.9,
+    axeHalfDepth: 0.3,
+    axeClearance: 1.6,
     // Jump: a ramp launches the blobs that cross it over the saws placed right behind it.
     rampHalfWidth: 3.4,
     rampHalfDepth: 1.4,
