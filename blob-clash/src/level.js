@@ -85,6 +85,26 @@ function makeAxes(rng, d, cfg) {
   return rng.chance(0.5) ? [axe(rng, d, cfg)] : [axe(rng, d, cfg), axe(rng, d + 4.5, cfg, Math.PI)];
 }
 
+function ball(rng, d, cfg, x, offset) {
+  const ob = cfg.obstacle.ball;
+  const half = cfg.track.width / 2;
+  return {
+    kind: 'ball', d, x, offset, side: x === 0 ? rng.pick([-1, 1]) : Math.sign(x), radius: ob.radius, span: ob.span,
+    speed: ob.speed, fallTime: ob.fallTime, waitTime: ob.waitTime, warnTime: ob.warnTime,
+    fallReach: half + ob.radius + 1 - Math.abs(x), fallDepth: 6, // slides past the rail, then down below the water line
+  };
+}
+
+// One ball in one lane, or two in different lanes that roll in turns: never all three lanes at once.
+function makeBalls(rng, d, cfg) {
+  const ob = cfg.obstacle.ball;
+  const first = rng.pick(cfg.track.lanes);
+  const lanes = rng.chance(0.5) ? [first] : [first, rng.pick(cfg.track.lanes.filter((x) => x !== first))];
+  const period = (2 * ob.span) / ob.speed + ob.fallTime + ob.waitTime;
+  const start = rng.next() * period;
+  return lanes.map((x, i) => ball(rng, d, cfg, x, start + (i * period) / 2));
+}
+
 // A ramp that does not cover the whole track, with saws behind it: take the ramp and fly over them.
 function makeJump(rng, d, cfg) {
   const ob = cfg.obstacle;
@@ -104,7 +124,7 @@ function makeBombs(rng, d, cfg) {
 }
 
 const OBSTACLE_MAKERS = {
-  slider: makeSliders, spikes: makeSpikes, trap: makeTrap, saw: makeSaws, jump: makeJump, bombs: makeBombs, axe: makeAxes,
+  slider: makeSliders, spikes: makeSpikes, trap: makeTrap, saw: makeSaws, jump: makeJump, bombs: makeBombs, axe: makeAxes, ball: makeBalls,
 };
 
 /** Hazard weights for a level: only unlocked kinds, with this level's featured kind boosted. */

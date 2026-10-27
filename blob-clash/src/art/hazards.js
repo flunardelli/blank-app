@@ -154,3 +154,43 @@ export function createAxe(length, pivotHeight, halfWidth) {
   group.traverse((o) => { o.castShadow = true; });
   return { group, pivot };
 }
+
+/** Studded crusher ball. Spin `roller.rotation.x` to roll it; `group` is what to move. */
+export function createBall(radius) {
+  const group = new THREE.Group();
+  const roller = new THREE.Group();
+  roller.add(new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 24), glossy(PALETTE.ball, { roughness: 0.3, metalness: 0.2 })));
+  const studs = glossy(PALETTE.ballStud, { roughness: 0.3 });
+  // Studs on a fibonacci sphere: evenly spread, so the roll reads from every angle.
+  const count = 18;
+  for (let i = 0; i < count; i++) {
+    const y = 1 - (2 * (i + 0.5)) / count;
+    const ring = Math.sqrt(1 - y * y);
+    const a = i * Math.PI * (3 - Math.sqrt(5));
+    const normal = new THREE.Vector3(Math.cos(a) * ring, y, Math.sin(a) * ring);
+    const stud = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.17, radius * 0.4, 8), studs);
+    stud.position.copy(normal).multiplyScalar(radius * 1.02);
+    stud.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+    roller.add(stud);
+  }
+  group.add(roller);
+  group.traverse((o) => { o.castShadow = true; });
+  return { group, roller };
+}
+
+/** Translucent red strip on the floor that warns which lane the ball will take. Fade `strip.material`. */
+export function createBallLane(width, length) {
+  const material = new THREE.MeshBasicMaterial({ color: PALETTE.ballWarn, transparent: true, opacity: 0, depthWrite: false });
+  const strip = new THREE.Mesh(new THREE.PlaneGeometry(width, length).rotateX(-Math.PI / 2), material);
+  strip.position.y = 0.04;
+  strip.renderOrder = 1;
+  return strip;
+}
+
+/** Flat ring that grows on the water where the ball landed. Scale it and fade `material`. */
+export function createRipple() {
+  const material = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 32).rotateX(-Math.PI / 2), material);
+  ring.visible = false;
+  return ring;
+}

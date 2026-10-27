@@ -10,7 +10,7 @@ import { bossForLevel } from './bosses.js';
 import { attackStats, BOSS_MOVES, CHAMPION_MOVES, GUARD, idlePose, KNOCKED_OUT, REACTIONS } from './moves.js';
 import {
   applyGate, blastVictims, bonusMultiplier, bossPunchDamage, championStats, chestReward, chooseGate, circlesOverlap,
-  clashRate, clashStep, comboStep, crossesObstacle, jumpLift, onRamp, pressesButton, rewardCoins,
+  clashRate, clashStep, comboStep, crossesObstacle, jumpLift, obstacleHits, onRamp, pressesButton, rewardCoins,
   startBlobsFor, sweepX, upgradeCost,
 } from './rules.js';
 import { createSequences } from './cheat.js';
@@ -209,6 +209,7 @@ export class Game {
     this.checkButtons();
     this.checkJumps();
     this.checkObstacles();
+    this.checkBalls();
     this.checkBombs();
     this.checkWalkers();
     this.checkEnemies();
@@ -336,6 +337,18 @@ export class Game {
       if (near.some(({ obstacle }) => crossesObstacle(obstacle, this.time, u.x, u.prevD, u.d, unitRadius))) hits.push(i);
     });
     if (hits.length) this.killUnits(hits);
+  }
+
+  // A rolling ball moves, so there is no line to cross: it crushes every grounded body it overlaps.
+  checkBalls() {
+    const { unitRadius } = CONFIG.crowd;
+    const balls = this.nearObstacles('ball', CONFIG.obstacle.ball.span + CONFIG.obstacle.ball.radius + 1);
+    if (!balls.length) return;
+    const hits = [];
+    this.player.units.forEach((u, i) => {
+      if (this.grounded(u) && balls.some(({ obstacle }) => obstacleHits(obstacle, this.time, u.x, u.d, unitRadius))) hits.push(i);
+    });
+    if (hits.length) this.killUnits(hits, { shake: 0.6 });
   }
 
   // A bomb goes off when any blob touches it and takes every grounded blob in its blast.

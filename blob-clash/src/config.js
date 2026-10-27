@@ -24,6 +24,9 @@ export const PALETTE = {
   spike: 0xe8433f,
   axe: 0xcfd6ee,
   axeHandle: 0x8a5a3a,
+  ball: 0x6a5acd,
+  ballStud: 0xff7a3a,
+  ballWarn: 0xff3a3a,
   saw: 0x7d5ce0,
   sawTeeth: 0xff7a3a,
   sawRail: 0x2e2466,
@@ -81,8 +84,8 @@ export const CONFIG = {
     trapButtonRadius: 0.9,
     // Hazard pool: each kind unlocks at a level, and every level features its world's kind
     // (weight × featuredBoost), so neighbouring worlds feel different.
-    weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35, axe: 0.35 },
-    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3, axe: 7 }, // axe: first level of world 3
+    weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35, axe: 0.35, ball: 0.35 },
+    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3, axe: 7, ball: 10 }, // axe: first level of world 3, ball: first level of world 4
     featuredBoost: 3,
     spikeHalfDepth: 1.1,
     // Spike pads hug the track edges (like the reference): [centre x, half width] per pad.
@@ -105,6 +108,16 @@ export const CONFIG = {
     axeHalfWidth: 0.9,
     axeHalfDepth: 0.3,
     axeClearance: 1.6,
+    // Ball: rolls down one lane towards the player, then veers off the edge into the water. A red strip
+    // lights up `ballWarn` seconds before each run. The cycle is roll + fall + wait, offset per ball.
+    ball: {
+      radius: 1.25,
+      span: 6, // half the length of the run, centred on the obstacle's d
+      speed: 9,
+      fallTime: 0.7,
+      waitTime: 1.7,
+      warnTime: 1.1,
+    },
     // Jump: a ramp launches the blobs that cross it over the saws placed right behind it.
     rampHalfWidth: 3.4,
     rampHalfDepth: 1.4,

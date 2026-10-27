@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyGate, bestGate, blastVictims, jumpLift, onRamp, sweepX, bonusMultiplier, bossPunchDamage, championStats, circleHitsBox, clashStep,
-  crowdSpacing, formationRadius, formatCoins, gateLabel, axeAngle, axeBladeX, axeIsLow, obstacleHits, pressesButton, requiredTapRate,
+  crowdSpacing, formationRadius, formatCoins, gateLabel, axeAngle, axeBladeX, axeIsLow, ballHits, ballRollTime, ballState, obstacleHits, crossesObstacle, pressesButton, requiredTapRate,
   rewardCoins, upgradeCost, jellyPhase,
 } from '../src/rules.js';
 
@@ -169,4 +169,36 @@ test('the axe cuts only while the blade hangs low, at three moments of the swing
   assert.ok(obstacleHits(axe, swinging, axeBladeX(axe, swinging), 10, 0.3));
   assert.ok(!obstacleHits(axe, swinging, -axeBladeX(axe, swinging), 10, 0.3));
   assert.ok(!obstacleHits(axe, 0, 0, 14, 0.3), 'only at its own distance');
+});
+
+test('the ball rolls down its lane, falls off the edge into the water and waits', () => {
+  const ball = {
+    kind: 'ball', d: 50, x: 3.3, side: 1, offset: 0, radius: 1.25, span: 6, speed: 9, fallTime: 0.7, waitTime: 1.7, warnTime: 1.1,
+    fallReach: 4, fallDepth: 6,
+  };
+  const roll = ballRollTime(ball);
+  assert.deepEqual([ballState(ball, 0).phase, ballState(ball, 0).d], ['roll', 56]);
+  assert.ok(Math.abs(ballState(ball, roll / 2).d - 50) < 1e-9, 'middle of the run');
+  const fall = ballState(ball, roll + 0.5 * ball.fallTime);
+  assert.equal(fall.phase, 'fall');
+  assert.ok(fall.x > ball.x && fall.y < ball.radius, 'slides sideways and sinks');
+  assert.ok(ballState(ball, roll + ball.fallTime + 0.1).phase === 'wait');
+  assert.ok(!ballState(ball, roll + ball.fallTime + 0.1).warn && ballState(ball, roll + ball.fallTime + ball.waitTime - 0.5).warn, 'warns just before the next run');
+  const period = roll + ball.fallTime + ball.waitTime;
+  assert.equal(ballState(ball, period + 0.2).d, ballState(ball, 0.2).d, 'repeats every period');
+});
+
+test('the ball crushes what it overlaps only while it rolls, and never in the other lanes', () => {
+  const ball = {
+    kind: 'ball', d: 50, x: 3.3, side: 1, offset: 0, radius: 1.25, span: 6, speed: 9, fallTime: 0.7, waitTime: 1.7, warnTime: 1.1,
+    fallReach: 4, fallDepth: 6,
+  };
+  const at = ballState(ball, 0.3); // d = 53.3
+  assert.ok(ballHits(ball, 0.3, 3.3, at.d - 1, 0.3), 'in its lane, in its way');
+  assert.ok(obstacleHits(ball, 0.3, 3.0, at.d, 0.3));
+  assert.ok(!ballHits(ball, 0.3, 0, at.d, 0.3), 'middle lane is safe');
+  assert.ok(!ballHits(ball, 0.3, -3.3, at.d, 0.3), 'far lane is safe');
+  assert.ok(!ballHits(ball, 0.3, 3.3, at.d + 4, 0.3), 'not yet there');
+  assert.ok(!ballHits(ball, ballRollTime(ball) + 0.2, 3.3, 44, 0.3), 'falling balls crush nobody');
+  assert.ok(!crossesObstacle(ball, 0.3, 3.3, 49, 51, 0.3), 'no crossing line: the game tests it every frame');
 });

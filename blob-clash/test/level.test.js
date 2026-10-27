@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { axeIsLow } from '../src/rules.js';
+import { axeIsLow, ballState } from '../src/rules.js';
 import { DOUBLE_ROW_GAP, generateLevel, hazardWeights } from '../src/level.js';
 import { CONFIG } from '../src/config.js';
 import { bossDifficulty, isGoodGate, requiredTapRate } from '../src/rules.js';
@@ -125,6 +125,30 @@ test('axes are raised long enough for the biggest crowd to cross, and stay out o
     assert.ok(2 * (axe.halfWidth + CONFIG.crowd.unitRadius) < CONFIG.track.width / 2);
     assert.ok(axe.length * Math.sin(axe.swing) >= CONFIG.track.width / 2 - 1, 'swings edge to edge');
   }
+});
+
+test('balls come from world 4 on and never fill all three lanes at the same time', () => {
+  const { lanes } = CONFIG.track;
+  const { radius } = CONFIG.obstacle.ball;
+  let found = 0;
+  for (let n = 1; n <= 30; n++) {
+    const balls = generateLevel(n).obstacles.filter((o) => o.kind === 'ball');
+    if (n < CONFIG.obstacle.unlockLevel.ball) assert.equal(balls.length, 0, `level ${n}: ball too early`);
+    found += balls.length;
+    const groups = Map.groupBy(balls, (b) => b.d);
+    for (const group of groups.values()) {
+      assert.ok(group.length < lanes.length, 'a group never has a ball for every lane');
+      assert.equal(new Set(group.map((b) => b.x)).size, group.length, 'one ball per lane');
+      const period = (2 * group[0].span) / group[0].speed + group[0].fallTime + group[0].waitTime;
+      for (let t = 0; t < 2 * period; t += 0.02) {
+        const rolling = group.filter((b) => ballState(b, t).phase === 'roll');
+        const covered = lanes.filter((x) => rolling.some((b) => Math.abs(b.x - x) < radius + CONFIG.crowd.unitRadius));
+        assert.ok(covered.length < lanes.length, `level ${n} t=${t}: every lane blocked`);
+        assert.ok(rolling.length <= 1, 'balls of a group roll in turns');
+      }
+    }
+  }
+  assert.ok(found > 0, 'balls show up in the campaign');
 });
 
 test('hazards unlock gradually and every world features its own kind', () => {
