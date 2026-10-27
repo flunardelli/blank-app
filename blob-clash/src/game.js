@@ -16,7 +16,7 @@ import {
 import { createSequences } from './cheat.js';
 import { completeLevel, hasProgress, totalStars } from './progress.js';
 import { mapRows } from './map.js';
-import { LEVEL_COUNT } from './worlds.js';
+import { LEVEL_COUNT, worldForLevel } from './worlds.js';
 import { loadSave, resetSave, writeSave } from './save.js';
 
 const UPGRADES = [
@@ -109,7 +109,9 @@ export class Game {
     this.championAnim = new Animator(GUARD);
     this.hitStop = 0;
     this.cameraKick = 0;
-    this.view = buildLevelView(this.world.scene, this.level);
+    const { theme } = worldForLevel(levelNumber);
+    this.world.setTheme(theme);
+    this.view = buildLevelView(this.world.scene, this.level, theme);
 
     this.state = 'menu';
     this.nextGate = 0;
