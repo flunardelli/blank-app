@@ -24,6 +24,7 @@ import { completeLevel, hasProgress, totalStars } from './progress.js';
 import { mapRows } from './map.js';
 import { LEVEL_COUNT, levelInfo, worldForLevel } from './worlds.js';
 import { loadSave, resetSave, writeSave } from './save.js';
+import { Cooldown } from './emoji.js';
 
 const UPGRADES = [
   { id: 'damage', title: 'Damage', icon: '🥊' },
@@ -36,8 +37,10 @@ const lookCurrent = new THREE.Vector3();
 const bubbleAnchor = new THREE.Vector3();
 
 export class Game {
-  constructor({ world, hud, input }) {
+  constructor({ world, hud, input, audio }) {
     this.world = world;
+    this.audio = audio;
+    this.emojiCooldown = new Cooldown(CONFIG.emoji.cooldownMs);
     this.hud = hud;
     this.input = input;
     this.save = loadSave();
@@ -104,6 +107,7 @@ export class Game {
 
   // ---- Level lifecycle ----------------------------------------------------------
   loadLevel(levelNumber) {
+    this.audio.stopMusic();
     this.view?.dispose();
     this.effects.clear();
     this.hud.clearBubbles();
@@ -175,6 +179,7 @@ export class Game {
     this.state = 'running';
     this.player.mood = 'run';
     this.hud.hideScreens();
+    this.audio.startMusic();
   }
 
   // Dev cheat: jump to the boss fight from the menu or the run, with a crowd that can win it.
@@ -232,6 +237,14 @@ export class Game {
     else if (player.center.d >= this.level.finishD - 1) this.finishRun();
   }
 
+  // Emoji bubble over the crowd; `mood` keeps one kind of bubble from repeating faster than the cooldown.
+  say(mood, face) {
+    if (!this.emojiCooldown.ready(mood, performance.now())) return;
+    const { player } = this;
+    bubbleAnchor.set(player.center.x, 3, toZ(player.center.d));
+    this.hud.showEmoji(face, bubbleAnchor, this.world.camera);
+  }
+
   checkGates() {
     const gate = this.view.gates[this.nextGate];
     if (!gate || this.player.center.d < gate.pair.d) return;
@@ -241,6 +254,11 @@ export class Game {
     const removed = this.player.setCount(applyGate(before, chosen));
     if (this.player.count > before) {
       this.effects.emojis(new THREE.Vector3(this.player.center.x, 3, toZ(this.player.center.d)), 3);
+      this.audio.play('goodGate');
+      this.say('good', CONFIG.emoji.goodGate);
+    } else {
+      this.audio.play('badGate');
+      this.say('loss', CONFIG.emoji.loss);
     }
     removed.forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
     const panel = gate.panels[chosen === gate.pair.left ? 0 : 1];
@@ -266,6 +284,7 @@ export class Game {
   }
 
   checkPickups() {
+    const coinsBefore = this.remainingCoins.length;
     this.remainingCoins = this.remainingCoins.filter((coin) => {
       if (!this.inReach(coin.x, coin.d)) return true;
       this.runCoins += CONFIG.coins.value;
@@ -273,9 +292,11 @@ export class Game {
       this.collectAnimation(this.view.coins.get(coin.id));
       return false;
     });
+    if (this.remainingCoins.length < coinsBefore) this.audio.play('coin'); // one ping per frame, however many were grabbed
     const { key } = this.level;
     if (!this.keyTaken && this.inReach(key.x, key.d)) {
       this.keyTaken = true;
+      this.audio.play('key');
       this.collectAnimation(this.view.key);
       this.hud.setKeys(Math.min(CONFIG.keys.perChest, this.save.keys + 1));
     }
@@ -318,6 +339,7 @@ export class Game {
     player.kill(indices).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
     player.setCount(player.count - hiddenLosses);
     this.effects.shake = Math.max(this.effects.shake, shake);
+    this.say('loss', CONFIG.emoji.loss);
   }
 
   // Bodies crossing a ramp's line take off; each one follows its own arc (see updateJumps).
@@ -520,6 +542,7 @@ export class Game {
     champion.root.scale.setScalar(0.01);
     champion.root.visible = true;
     this.hud.showBanner(`VS ${this.boss.name}`);
+    if (player.count >= CONFIG.emoji.bigCrowd) this.say('big', CONFIG.emoji.bigCrowdFace);
 
     const bodies = player.take(player.units.length);
     player.setCount(0);
@@ -599,11 +622,15 @@ export class Game {
     f.bossHp = Math.max(0, f.bossHp - damage * factor);
     const at = this.bossChest().add(new THREE.Vector3((Math.random() - 0.5) * 1.2, (Math.random() - 0.5), 0));
     if (blocked) {
+      this.audio.play('punch');
       this.effects.impact(at, { stars: 0, scale: 0.4 }); // thud on the gloves: no flinch, no jelly bits
       if (f.bossHp <= 0) this.knockOut();
       return;
     }
     this.bossAnim.react(reaction);
+    const strong = factor > 1 || reaction === REACTIONS.hurtBig;
+    this.audio.play(strong ? 'heavy' : 'punch');
+    if (strong) this.audio.vibrate(CONFIG.audio.vibrateMs.heavy);
     this.effects.impact(at, factor > 1 ? { ...impact, stars: impact.stars + 3, scale: impact.scale * 1.3 } : impact);
     this.effects.burst(at, this.boss.colors.top, { count: 5, speed: 6, size: 0.18 });
     this.effects.shake = Math.max(this.effects.shake, 0.15);
@@ -685,6 +712,8 @@ export class Game {
     if (this.state !== 'boxing') return;
     const heavy = weight > 1.2;
     f.hp = Math.max(0, f.hp - damage);
+    this.audio.play(heavy ? 'heavy' : 'punch');
+    if (heavy) this.audio.vibrate(CONFIG.audio.vibrateMs.heavy);
     this.championAnim.react(heavy ? REACTIONS.hurtBig : REACTIONS.hurt);
     const at = this.champion.root.position.clone().setY(1.6 * this.championScale / 2 + 0.6);
     this.effects.impact(at, { stars: Math.round(3 * weight), scale: 0.8 * weight });
@@ -702,6 +731,8 @@ export class Game {
     setGlow(this.view.boss, 0);
     this.hud.showFight(false);
     this.hud.popText('K.O.!');
+    this.audio.play('ko');
+    this.audio.vibrate(CONFIG.audio.vibrateMs.knockOut);
     this.startBonus(this.fight.hp / this.fight.maxHp);
   }
 
@@ -746,6 +777,8 @@ export class Game {
 
   complete() {
     this.state = 'complete';
+    this.audio.stopMusic();
+    this.audio.play('win');
     const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
     let chest = this.stageCoins;
     if (this.keyTaken) this.save.keys += 1;
@@ -778,6 +811,8 @@ export class Game {
 
   lose() {
     this.state = 'lost';
+    this.audio.stopMusic();
+    this.audio.play('lose');
     this.player.setCount(0).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
     this.save.coins += this.runCoins; // keys only count on a win
     writeSave(this.save);

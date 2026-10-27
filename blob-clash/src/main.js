@@ -5,6 +5,8 @@ import { Input } from './input.js';
 import { Game } from './game.js';
 import { Pause } from './pause.js';
 import { SkinShop } from './skinShop.js';
+import { GameAudio } from './audio.js';
+import { loadMuted, writeMuted } from './save.js';
 
 // Canvas textures render text with Fredoka, so wait for the font before building the level.
 await document.fonts.load('700 64px Fredoka').catch(() => {});
@@ -13,12 +15,22 @@ const canvas = document.getElementById('scene');
 const world = createWorld(canvas);
 const hud = new Hud();
 const input = new Input(canvas);
-const game = new Game({ world, hud, input });
+const audio = new GameAudio({
+  createContext: () => new (window.AudioContext ?? window.webkitAudioContext)(),
+  vibrate: (pattern) => navigator.vibrate?.(pattern),
+  muted: loadMuted(),
+  onMuteChange: writeMuted,
+});
+// Browsers keep audio silent until the first gesture.
+for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, () => audio.unlock(), { once: true });
+hud.bindSound({ muted: audio.muted, onToggle: () => { audio.toggleMuted(); return audio.muted; } });
+const game = new Game({ world, hud, input, audio });
 const skinShop = new SkinShop({ game, hud, scene: world.scene });
 const pause = new Pause({
   canPause: () => hud.canPause(),
   onChange: (paused) => {
     input.setLocked(paused);
+    audio.setPaused(paused);
     hud.showPause(paused);
   },
 });
