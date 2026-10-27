@@ -5,6 +5,8 @@ export const PALETTE = {
   walker: { bottom: 0xe4e7f0, top: 0x8d93a6, bits: 0xb8bdcc },
   glove: 0x2f56d6,
   championGlove: 0xd8264a,
+  castleStone: 0xb8aed0,
+  castleRoof: 0x8a3ad8,
   button: 0x3ee05a,
   key: 0xffc21a,
   goodGlass: 0x6fd0ff,
@@ -181,6 +183,11 @@ export const CONFIG = {
     maxDifficulty: 1.4,
     kindFactor: { mini: 0.8, boss: 1, chest: 1 },
     miniScale: 0.8, // mini bosses are a smaller roster boss in the world's colour
+    rigScale: 2.6, // a boss rig is modelled for a champion; this is its size in the ring
+    chestY: 3.4, // where hits on a size-1 boss spark, and how much higher per extra size
+    chestHeight: 6,
+    bubbleHeight: 8, // same for the health bubble over the boss during the run
+    worldBossScale: 1.5, // and a world boss towers over the ring (the camera and the hit spots follow)
     mechanicsFromWorld: 2, // worlds before this one fight with plain punches only
     miniAttack: { interval: 1.4, move: 'jab' }, // and only throw simple jabs
     finishGap: 4, // straight run between the last segment and the finish line

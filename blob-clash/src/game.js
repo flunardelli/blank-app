@@ -491,7 +491,8 @@ export class Game {
   }
 
   bossChest() {
-    return new THREE.Vector3(0, 3.4, toZ(this.level.boss.d) + 1.2);
+    const { chestY, chestHeight } = CONFIG.boss;
+    return new THREE.Vector3(0, chestY + (this.boss.size - 1) * chestHeight, toZ(this.level.boss.d) + 1.2);
   }
 
   // The run is over: chest levels end at the chest, every other level in a boss fight.
@@ -545,7 +546,7 @@ export class Game {
     champion.root.rotation.y = Math.PI;
     champion.root.scale.setScalar(0.01);
     champion.root.visible = true;
-    this.hud.showBanner(`VS ${this.boss.name}`);
+    this.hud.showBanner(this.boss.banner);
     if (player.count >= CONFIG.emoji.bigCrowd) this.say('big', CONFIG.emoji.bigCrowdFace);
 
     const bodies = player.take(player.units.length);
@@ -881,7 +882,9 @@ export class Game {
         const mid = toZ(this.level.boss.d - 2.6);
         // Big hits punch the camera in a little.
         const kick = this.cameraKick * 2.5;
-        return { pos: [13 - kick, 6.5 - kick * 0.3, mid + 5 - kick * 0.4], look: [0, 2.8, mid - 0.5] };
+        // A bigger boss needs the camera further back and aimed higher to stay in frame.
+        const grow = this.boss.size - 1;
+        return { pos: [13 + grow * 9 - kick, 6.5 + grow * 4 - kick * 0.3, mid + 5 - kick * 0.4], look: [0, 2.8 + grow * 2.4, mid - 0.5] };
       }
       case 'chest':
         return this.chestStage.camera();
@@ -933,7 +936,7 @@ export class Game {
       this.hud.placeBubble(bubble, bubbleAnchor, camera, crowd.count, crowd.count > 0 && inRange(crowd.center.d));
     }
 
-    bubbleAnchor.set(0, 6.6, toZ(this.level.boss.d));
+    bubbleAnchor.set(0, 6.6 + (this.boss.size - 1) * CONFIG.boss.bubbleHeight, toZ(this.level.boss.d));
     const showBossHp = this.level.kind !== 'chest' && (this.state === 'running' || this.state === 'skirmish');
     this.hud.placeBubble(this.bossBubble, bubbleAnchor, camera, this.level.boss.hp, showBossHp && inRange(this.level.boss.d));
   }

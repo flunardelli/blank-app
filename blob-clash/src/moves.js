@@ -93,6 +93,77 @@ export const BOSS_MOVES = {
     ],
   },
 
+  // Sumo: lifts a foot, stomps and slaps both palms forward with all his weight. The ring shakes.
+  bellySlam: {
+    weight: 1.5,
+    impact: 'shockwave',
+    hits: [0.72],
+    keys: [
+      [0, {}],
+      [0.4, { y: 0.08, squash: 0.12, lean: -0.2, twist: 0.1, lRaise: 1.1, rRaise: 1.1, lSpread: 0.9, rSpread: 0.9, lElbow: 1.0, rElbow: 1.0, lLeg: 1.1, rLeg: -0.1 }, 'outCubic'],
+      [0.55, { y: 0.1, squash: 0.15, lean: -0.25, lRaise: 1.2, rRaise: 1.2, lSpread: 1.0, rSpread: 1.0, lElbow: 1.0, rElbow: 1.0, lLeg: 1.2, rLeg: -0.1 }, 'linear'],
+      [0.72, { y: -0.1, squash: -0.3, lean: 0.5, dash: 0.8, lRaise: 1.55, rRaise: 1.55, lSpread: 0.1, rSpread: 0.1, lElbow: 0.1, rElbow: 0.1, lLeg: 0.7, rLeg: -0.5 }, 'inCubic'],
+      [0.95, { y: -0.06, squash: -0.15, lean: 0.4, dash: 0.8, lRaise: 1.5, rRaise: 1.5, lSpread: 0.1, rSpread: 0.1, lElbow: 0.2, rElbow: 0.2 }, 'outQuad'],
+      [1.5, {}, 'inOutSine'],
+    ],
+  },
+
+  // Ninja: coils into the ground, then spins twice with a high kick and a back-fist.
+  spinKick: {
+    weight: 1,
+    hits: [0.4, 0.64],
+    keys: [
+      [0, {}],
+      [0.22, { y: -0.08, squash: -0.18, twist: -1.2, lean: 0.15, lRaise: 0.9, rRaise: 0.9, lSpread: 0.8, rSpread: 0.8, lElbow: 1.2, rElbow: 1.2 }, 'inOutSine'],
+      [0.4, { lift: 0.5, dash: 0.6, twist: 1.5, lean: -0.1, squash: 0.1, lRaise: 0.3, rRaise: 1.2, rSpread: 1.4, rElbow: 0.1, lLeg: 1.5, rLeg: -0.3 }, 'inCubic'],
+      [0.52, { lift: 0.4, dash: 0.6, twist: 2.4, lean: 0, rRaise: 0.8, rSpread: 1.2, lLeg: 0.6, rLeg: 0.2 }, 'linear'],
+      [0.64, { lift: 0.1, dash: 0.5, twist: 3.1, lean: 0.2, rRaise: 1.45, rSpread: 0.3, rElbow: 0.1, lLeg: 0.3, rLeg: -0.2 }, 'inQuad'],
+      [0.9, { dash: 0.3, twist: 0.3, y: -0.05 }, 'outQuad'],
+      [1.35, {}, 'inOutSine'],
+    ],
+  },
+
+  // Robot: winds the right arm back with a whirr, then fires it forward like a rocket.
+  rocketPunch: {
+    weight: 1.3,
+    hits: [0.62],
+    keys: [
+      [0, {}],
+      [0.45, { twist: -0.7, lean: -0.25, squash: 0.05, head: 0.1, rRaise: 0.1, rElbow: 2.5, rSpread: 0.5, lRaise: 1.0, lElbow: 1.2, lSpread: 0.8 }, 'outCubic'],
+      [0.62, { twist: 0.4, lean: 0.35, dash: 1.1, rRaise: 1.57, rSpread: 0, rElbow: 0, lRaise: 0.7, lElbow: 1.6 }, 'inCubic'],
+      [0.9, { twist: 0.45, lean: 0.4, dash: 1.1, rRaise: 1.55, rElbow: 0, lRaise: 0.7, lElbow: 1.6 }, 'linear'],
+      [1.5, {}, 'inOutSine'],
+    ],
+  },
+
+  // Pirate: a wide cutlass sweep from low on the right, all the way across.
+  cutlass: {
+    weight: 1.3,
+    hits: [0.55],
+    keys: [
+      [0, {}],
+      [0.38, { twist: -1.0, lean: 0.1, squash: -0.1, y: -0.05, rRaise: 0.9, rSpread: 1.7, rElbow: 0.2, lRaise: 0.9, lSpread: 0.5, lLeg: 0.5 }, 'outCubic'],
+      [0.55, { twist: 1.1, lean: 0.3, dash: 0.8, rRaise: 1.45, rSpread: 0.6, rElbow: 0.1, lRaise: 0.4, lLeg: 0.6, rLeg: -0.4 }, 'inCubic'],
+      [0.8, { twist: 1.3, lean: 0.35, dash: 0.9, rRaise: 1.3, rSpread: 0.3 }, 'outQuad'],
+      [1.4, {}, 'inOutSine'],
+    ],
+  },
+
+  // Castle king: raises the royal fist, brings it down, then backs it with a second command.
+  decree: {
+    weight: 1.2,
+    hits: [0.55, 0.95],
+    keys: [
+      [0, {}],
+      [0.3, { lift: 0.3, lean: -0.3, squash: 0.1, rRaise: 2.9, rSpread: 0.3, rElbow: 0.3, lRaise: 1.0, lSpread: 0.6 }, 'outQuad'],
+      [0.55, { lift: 0, dash: 0.7, y: -0.08, squash: -0.2, lean: 0.55, rRaise: 1.2, rElbow: 0.2, lRaise: 0.6 }, 'inCubic'],
+      [0.72, { lean: -0.15, twist: -0.4, dash: 0.2, rRaise: 0.6, rElbow: 1.8, lRaise: 1.6, lElbow: 0.2 }, 'outQuad'],
+      [0.95, { lean: 0.4, twist: 0.7, dash: 0.8, lRaise: 1.55, lElbow: 0.05, rRaise: 0.5, rElbow: 2 }, 'inQuad'],
+      [1.2, { twist: 0.5, dash: 0.6, lRaise: 1.4 }, 'outQuad'],
+      [1.9, {}, 'inOutSine'],
+    ],
+  },
+
   // The telegraphed big punch (after CHARGE): an overhead smash that lands exactly `bigSwing` seconds in.
   smash: {
     weight: 2,
