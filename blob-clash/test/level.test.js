@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateLevel, hazardWeights } from '../src/level.js';
+import { DOUBLE_ROW_GAP, generateLevel, hazardWeights } from '../src/level.js';
 import { CONFIG } from '../src/config.js';
 import { bossDifficulty, isGoodGate, requiredTapRate } from '../src/rules.js';
 import { WORLDS } from '../src/worlds.js';
@@ -43,6 +43,27 @@ test('a gate pair never offers the same operation twice (no "×2 | ×2")', () =>
     for (const { left, right } of generateLevel(n).gates) {
       assert.notEqual(left.op, right.op, `level ${n}: ${left.op}${left.value} | ${right.op}${right.value}`);
     }
+  }
+});
+
+test('double gate rows: second row sits right behind the first, appears later, and is crossable', () => {
+  const { forwardSpeed, lateralSpeed } = CONFIG.crowd;
+  const laneSwitch = CONFIG.track.width / 2; // distance between the two panel centres
+  assert.ok((DOUBLE_ROW_GAP / forwardSpeed) * lateralSpeed >= laneSwitch, 'crowd can switch sides between rows');
+  const doubles = (n) => generateLevel(n).gates.filter((g) => g.row === 1);
+  const total = Array.from({ length: 30 }, (_, i) => doubles(i + 1).length).reduce((a, b) => a + b);
+  assert.ok(total > 15, 'double rows are common');
+  for (let n = 1; n <= 30; n++) {
+    const { gates } = generateLevel(n);
+    assert.equal(gates[0].row, 0);
+    assert.equal(gates[1].row === 1 && gates[1].d === gates[0].d + DOUBLE_ROW_GAP, false, `level ${n}: first segment doubled`);
+    gates.forEach((g, i) => {
+      if (i > 0) assert.ok(g.d > gates[i - 1].d, `level ${n}: gates out of order`);
+      if (g.row === 1) {
+        assert.equal(gates[i - 1].row, 0);
+        assert.equal(g.d - gates[i - 1].d, DOUBLE_ROW_GAP);
+      }
+    });
   }
 });
 
@@ -98,9 +119,10 @@ test('hazards unlock gradually and every world features its own kind', () => {
 
 test('levels are longer and the enemy crowds bigger as the campaign goes on', () => {
   const { minSegments, maxSegments } = CONFIG.track;
-  assert.equal(generateLevel(1).gates.length, minSegments);
-  assert.equal(generateLevel(30).gates.length, maxSegments);
-  const segments = Array.from({ length: 30 }, (_, i) => generateLevel(i + 1).gates.length);
+  const segmentsOf = (n) => generateLevel(n).gates.filter((g) => g.row === 0).length;
+  assert.equal(segmentsOf(1), minSegments);
+  assert.equal(segmentsOf(30), maxSegments);
+  const segments = Array.from({ length: 30 }, (_, i) => segmentsOf(i + 1));
   assert.ok(segments.every((n, i) => i === 0 || n >= segments[i - 1] - 1), 'segments only dip by one at most');
   // Enemy crowds as a share of the best crowd, averaged over a world's three levels.
   const share = (world) => {
@@ -123,7 +145,7 @@ test('levels 28–30 are not a copy of levels 4–6', () => {
     const early = generateLevel(4 + i);
     const late = generateLevel(28 + i);
     assert.notEqual(early.world, late.world);
-    assert.ok(late.gates.length > early.gates.length, 'longer');
+    assert.ok(late.gates.filter((g) => g.row === 0).length > early.gates.filter((g) => g.row === 0).length, 'longer');
     assert.ok(bossDifficulty(28 + i) > bossDifficulty(4 + i), 'stronger boss');
   }
 });
