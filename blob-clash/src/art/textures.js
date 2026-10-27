@@ -221,17 +221,3 @@ export const puffTexture = () => cached('puff', () => {
   ctx.fillRect(0, 0, 64, 64);
   return toTexture(canvas);
 });
-
-// Emoji on a white speech blob, floating over the crowd when it grows.
-export const emojiTexture = (emoji) => cached(`emoji:${emoji}`, () => {
-  const [canvas, ctx] = makeCanvas(128, 128);
-  ctx.fillStyle = 'rgba(255,255,255,0.95)';
-  ctx.beginPath();
-  ctx.arc(64, 64, 58, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.font = '76px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(emoji, 64, 70);
-  return toTexture(canvas);
-});

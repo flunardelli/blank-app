@@ -258,7 +258,6 @@ export class Game {
     const before = this.player.count;
     const removed = this.player.setCount(applyGate(before, chosen));
     if (this.player.count > before) {
-      this.effects.emojis(new THREE.Vector3(this.player.center.x, 3, toZ(this.player.center.d)), 3);
       this.audio.play('goodGate');
       this.say('good', CONFIG.emoji.goodGate);
     } else {
