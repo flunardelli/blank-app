@@ -19,6 +19,7 @@ export class Hud {
     this.fight = $('fight');
     this.hpPlayer = $('hp-player');
     this.hpBoss = $('hp-boss');
+    this.dodgeHint = $('dodge-hint');
   }
 
   setLevel(level) {
@@ -33,6 +34,13 @@ export class Hud {
     this.fight.hidden = !visible;
     this.fight.style.setProperty('--boss-color', `#${bossColor.toString(16).padStart(6, '0')}`);
     this.topbar.classList.toggle('fighting', visible);
+    if (!visible) this.dodgeHint.hidden = true;
+  }
+
+  /** The warning before a big punch: an arrow towards the side to dodge to (+1 = right), or none. */
+  showDodge(dir) {
+    this.dodgeHint.hidden = dir === 0;
+    this.dodgeHint.dataset.dir = dir > 0 ? 'right' : 'left';
   }
 
   // Restarts a one-shot CSS animation on an element showing `text`.

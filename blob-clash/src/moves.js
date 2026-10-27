@@ -91,6 +91,20 @@ export const BOSS_MOVES = {
     ],
   },
 
+  // The telegraphed big punch (after CHARGE): an overhead smash that lands exactly `bigSwing` seconds in.
+  smash: {
+    weight: 2,
+    impact: 'shockwave',
+    hits: [0.45],
+    keys: [
+      [0, {}],
+      [0.2, { lift: 0.5, lean: -0.3, squash: 0.12, lRaise: 2.9, rRaise: 2.9, lElbow: 0.4, rElbow: 0.4, lSpread: 0.2, rSpread: 0.2 }, 'outQuad'],
+      [0.45, { lift: 0, dash: 1, y: -0.1, squash: -0.25, lean: 0.65, lRaise: 1.1, rRaise: 1.1, lElbow: 0.2, rElbow: 0.2, lSpread: 0.15, rSpread: 0.15, lLeg: 0.6, rLeg: -0.5 }, 'inCubic'],
+      [0.8, { y: -0.08, squash: -0.15, dash: 1, lean: 0.55, lRaise: 1.1, rRaise: 1.1, lElbow: 0.3, rElbow: 0.3 }, 'outQuad'],
+      [1.3, {}, 'inOutSine'],
+    ],
+  },
+
   // Punk: three fast alternating jabs while bobbing forward.
   flurry: {
     weight: 1,
@@ -103,6 +117,33 @@ export const BOSS_MOVES = {
     ],
   },
 };
+
+// ---- Boss stances (played with `hold`, then released with RELAX) ---------------------
+// The warning before the big punch: leans back with both fists high, shaking with effort.
+export const CHARGE = {
+  keys: [
+    [0, {}],
+    [0.3, { lean: -0.35, squash: 0.1, y: -0.05, head: 0.2, lRaise: 2.6, rRaise: 2.6, lElbow: 0.9, rElbow: 0.9, lSpread: 0.35, rSpread: 0.35, lLeg: 0.3, rLeg: -0.3 }, 'outCubic'],
+  ],
+};
+
+// High guard: gloves in front of the face, chin tucked.
+export const GUARD_UP = {
+  keys: [
+    [0, {}],
+    [0.12, { lean: 0.2, head: -0.1, lRaise: 1.45, rRaise: 1.45, lElbow: 2.5, rElbow: 2.5, lSpread: 0.1, rSpread: 0.1 }, 'outQuad'],
+  ],
+};
+
+// Dazed after swinging at nothing: doubled over, arms dangling.
+export const STAGGERED = {
+  keys: [
+    [0, {}],
+    [0.15, { lean: 0.7, head: -0.3, squash: -0.15, y: -0.06, lRaise: 0.1, rRaise: 0.1, lElbow: 0.3, rElbow: 0.3, lSpread: 0.35, rSpread: 0.35, lLeg: 0.1, rLeg: -0.1 }, 'outBack'],
+  ],
+};
+
+export const RELAX = { keys: [[0, {}], [0.2, {}]] };
 
 // ---- Champion moves ---------------------------------------------------------------
 const championJab = { weight: 0.7, hits: [0.06], keys: [[0, {}], [0.06, RIGHT_EXTENDED, 'outQuad'], [0.26, {}, 'inOutSine']] };
@@ -121,6 +162,16 @@ export const CHAMPION_MOVES = {
       [0.55, { lift: 2.6, dash: 1.9, squash: 0.05, lean: -0.5, head: 0.3, lRaise: 2.2, rRaise: 2.2, lElbow: 0.5, rElbow: 0.5, lSpread: 0.9, rSpread: 0.9, lLeg: 0.6, rLeg: 0.3 }, 'outQuad'],
       [0.78, { y: -0.1, squash: -0.3, lean: 0.25, lRaise: 0.6, rRaise: 0.6, lSpread: 0.8, rSpread: 0.8, lElbow: 1.2, rElbow: 1.2, lLeg: 0.5, rLeg: -0.4 }, 'inQuad'],
       [1, {}, 'outBack'],
+    ],
+  },
+
+  // Sidestep out of the big punch: dip and lean away, then bounce back.
+  dodge: {
+    keys: [
+      [0, {}],
+      [0.12, { y: -0.1, squash: -0.2, lean: 0.35, twist: 0.5, lRaise: 0.9, rRaise: 0.2, lSpread: 0.9 }, 'outQuad'],
+      [0.5, { y: -0.08, squash: -0.12, lean: 0.3, twist: 0.4 }, 'linear'],
+      [0.8, {}, 'outBack'],
     ],
   },
 

@@ -181,6 +181,7 @@ export const CONFIG = {
     maxDifficulty: 1.4,
     kindFactor: { mini: 0.8, boss: 1, chest: 1 },
     miniScale: 0.8, // mini bosses are a smaller roster boss in the world's colour
+    mechanicsFromWorld: 2, // worlds before this one fight with plain punches only
     miniAttack: { interval: 1.4, move: 'jab' }, // and only throw simple jabs
     finishGap: 4, // straight run between the last segment and the finish line
     ringDepth: 11,
@@ -194,6 +195,19 @@ export const CONFIG = {
     finisherEvery: 5, // every 5th chained tap is a flying jump punch
     jumpPunchMultiplier: 2.5,
     openingMultiplier: 2.5, // the fight opens with a free flying punch
+    // Boss mechanics (worlds 2+, see bosses.js): a telegraphed big punch to dodge, a high guard, a second phase.
+    bigEvery: 3, // every 3rd attack of a boss that can dodge is the big punch
+    bigInterval: 2.4, // its damage is sized as if it were this slow a single strike
+    bigSwing: 0.45, // seconds from the end of the warning until the fist lands
+    telegraph: 0.8, // warning before the big punch: the boss glows and an arrow shows the way to dodge
+    dodgeDrag: 50, // pixels of drag (or 0.12 s of an arrow key) that count as a dodge
+    keyDragPerSecond: 420,
+    counterSeconds: 1.5, // the boss is dazed after a miss...
+    counterMultiplier: 2, // ...and takes double damage
+    guardMultiplier: 0.2, // punches into a raised guard
+    guardOpenSeconds: 1, // the guard drops this long after every attack
+    enrageBelow: 0.5, // boss health share that starts the second phase
+    enrageSpeed: 1.25,
   },
   bonus: { maxMultiplier: 5, step: 0.2, tileDepth: 2.6 },
   campaign: { starsAt: [2, 4], celebrateMs: 2200 }, // x1–x2 = 1 star, up to x4 = 2, above = 3; level count lives in worlds.js

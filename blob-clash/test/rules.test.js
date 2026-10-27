@@ -4,7 +4,7 @@ import {
   applyGate, bestGate, blastVictims, jumpLift, onRamp, sweepX, bonusMultiplier, bossPunchDamage, championStats, circleHitsBox, clashStep,
   crowdSpacing, formationRadius, formatCoins, gateLabel, axeAngle, axeBladeX, axeIsLow, ballHits, ballRollTime, ballState, obstacleHits,
   crossesObstacle, pusherBox, pusherGap, pressesButton, requiredTapRate,
-  rewardCoins, upgradeCost, jellyPhase,
+  rewardCoins, upgradeCost, jellyPhase, createBossBrain, bossBrainStep, punchFactor, guardIsUp, bossSpeed,
 } from '../src/rules.js';
 
 test('gates apply their operation and clamp to [0, max]', () => {
@@ -233,4 +233,167 @@ test('the ball crushes what it overlaps only while it rolls, and never in the ot
   assert.ok(!ballHits(ball, 0.3, 3.3, at.d + 4, 0.3), 'not yet there');
   assert.ok(!ballHits(ball, ballRollTime(ball) + 0.2, 3.3, 44, 0.3), 'falling balls crush nobody');
   assert.ok(!crossesObstacle(ball, 0.3, 3.3, 49, 51, 0.3), 'no crossing line: the game tests it every frame');
+});
+
+// ---- Boss mechanics ------------------------------------------------------------------
+const CFG = {
+  bigEvery: 3, telegraph: 0.8, bigSwing: 0.45, dodgeDrag: 50, counterSeconds: 1.5, counterMultiplier: 2,
+  guardMultiplier: 0.2, guardOpenSeconds: 1, enrageBelow: 0.5, enrageSpeed: 1.25,
+};
+const JAB = { interval: 2, move: 'jab' };
+const RAGE = { interval: 1.5, move: 'double' };
+
+// Runs the brain for `seconds` in 0.05 s steps and collects the event types.
+function run(brain, seconds, input = {}, cfg = CFG) {
+  const types = [];
+  for (let t = 0; t < seconds - 1e-9; t += 0.05) {
+    const step = bossBrainStep(brain, 0.05, typeof input === 'function' ? input(brain) : input, cfg);
+    brain = step.brain;
+    types.push(...step.events.map((e) => e.type));
+  }
+  return { brain, types };
+}
+
+test('a boss without mechanics just attacks on its interval and never guards', () => {
+  let brain = createBossBrain({ attack: JAB }, 0.5);
+  assert.ok(!guardIsUp(brain));
+  const { types, brain: after } = run(brain, 10);
+  assert.ok(types.every((t) => t === 'attack'), types.join());
+  assert.equal(types.length, 5);
+  assert.equal(punchFactor(after), 1);
+});
+
+test('every third attack of a dodging boss is a telegraphed big punch', () => {
+  const { types } = run(createBossBrain({ attack: JAB, mechanics: ['dodge'] }, 0.1), 12);
+  const firstBig = types.indexOf('telegraph');
+  assert.deepEqual(types.slice(0, firstBig), ['attack', 'attack']);
+  assert.deepEqual(types.slice(firstBig, firstBig + 4), ['telegraph', 'swing', 'bigHit', 'attack']);
+});
+
+test('the big punch lands after exactly the telegraph and swing times when nobody dodges', () => {
+  let brain = createBossBrain({ attack: JAB, mechanics: ['dodge'] }, 0);
+  brain = { ...brain, attacks: 2 };
+  let step = bossBrainStep(brain, 0.01, {}, CFG);
+  assert.deepEqual(step.events.map((e) => e.type), ['telegraph']);
+  step = bossBrainStep(step.brain, 0.79, {}, CFG);
+  assert.deepEqual(step.events.map((e) => e.type), ['swing']);
+  assert.equal(step.brain.phase, 'swing');
+  step = bossBrainStep(step.brain, 0.45, {}, CFG);
+  assert.deepEqual(step.events.map((e) => e.type), ['bigHit']);
+});
+
+test('dragging towards the arrow dodges: the boss whiffs, is dazed and takes double damage', () => {
+  let brain = { ...createBossBrain({ attack: JAB, mechanics: ['dodge'] }, 0), attacks: 2 };
+  let step = bossBrainStep(brain, 0.01, {}, CFG);
+  const { dir } = step.events[0];
+  step = bossBrainStep(step.brain, 0.1, { drag: 60 * dir }, CFG);
+  assert.deepEqual(step.events.map((e) => e.type), ['dodged']);
+  const { brain: dazed, types } = run(step.brain, 0.8 + 0.45 - 0.1, {});
+  assert.deepEqual(types, ['swing', 'whiff']);
+  assert.equal(dazed.phase, 'stagger');
+  assert.equal(punchFactor(dazed, false, CFG), 2);
+  assert.equal(punchFactor(dazed, true, CFG), 2);
+  // The window lasts counterSeconds, then the boss recovers.
+  const over = run(dazed, 1.5, {});
+  assert.ok(over.types.includes('recovered'));
+  assert.equal(punchFactor(over.brain, false, CFG), 1);
+});
+
+test('dragging the wrong way or too little does not dodge', () => {
+  const start = { ...createBossBrain({ attack: JAB, mechanics: ['dodge'] }, 0), attacks: 2 };
+  const first = bossBrainStep(start, 0.01, {}, CFG);
+  const { dir } = first.events[0];
+  const wrong = run(first.brain, 1.3, { drag: -400 * dir * 0.05 });
+  assert.ok(wrong.types.includes('bigHit') && !wrong.types.includes('dodged'));
+  const small = run(first.brain, 1.3, { drag: 0.5 * dir });
+  assert.ok(small.types.includes('bigHit'));
+});
+
+test('the arrow alternates sides', () => {
+  const dirs = [];
+  let brain = createBossBrain({ attack: JAB, mechanics: ['dodge'] }, 0.1);
+  for (let t = 0; t < 40; t += 0.05) {
+    const step = bossBrainStep(brain, 0.05, {}, CFG);
+    brain = step.brain;
+    dirs.push(...step.events.filter((e) => e.type === 'telegraph').map((e) => e.dir));
+  }
+  assert.ok(dirs.length >= 3);
+  assert.deepEqual(dirs.slice(0, 3), [1, -1, 1]);
+});
+
+test('guard: punches do 20% while it is up, full right after an attack, and jump punches break it', () => {
+  let brain = createBossBrain({ attack: JAB, mechanics: ['guard'] }, 1);
+  assert.ok(guardIsUp(brain));
+  assert.equal(punchFactor(brain, false, CFG), 0.2);
+  assert.equal(punchFactor(brain, true, CFG), 1);
+  let step = bossBrainStep(brain, 1.01, {}, CFG);
+  assert.deepEqual(step.events.map((e) => e.type), ['attack']);
+  assert.ok(!guardIsUp(step.brain));
+  assert.equal(punchFactor(step.brain, false, CFG), 1);
+  // After the open time the guard goes back up, in time for the next attack.
+  step = bossBrainStep(step.brain, 1.05, {}, CFG);
+  assert.ok(guardIsUp(step.brain));
+});
+
+test('guard keeps the attack rhythm: one attack per interval', () => {
+  const { types } = run(createBossBrain({ attack: JAB, mechanics: ['guard'] }, 0.5), 20);
+  assert.equal(types.filter((t) => t === 'attack').length, 10);
+});
+
+test('below half health an enraging boss is 25% faster and switches attack', () => {
+  const brain = createBossBrain({ attack: JAB, rage: RAGE, mechanics: ['enrage'] }, 1);
+  let step = bossBrainStep(brain, 0.05, { hpFraction: 0.6 }, CFG);
+  assert.ok(!step.brain.enraged && bossSpeed(step.brain, CFG) === 1);
+  step = bossBrainStep(step.brain, 0.05, { hpFraction: 0.5 }, CFG);
+  assert.deepEqual(step.events.map((e) => e.type), ['enrage']);
+  assert.equal(bossSpeed(step.brain, CFG), 1.25);
+  const attacks = [];
+  let b = step.brain;
+  for (let t = 0; t < 30; t += 0.05) {
+    const s = bossBrainStep(b, 0.05, { hpFraction: 0.4 }, CFG);
+    b = s.brain;
+    attacks.push(...s.events.filter((e) => e.type === 'attack').map((e) => e.attack));
+  }
+  assert.ok(attacks.every((a) => a === RAGE));
+  assert.ok(Math.abs(30 / attacks.length - RAGE.interval / 1.25) < 0.15, `period ${30 / attacks.length}`);
+  assert.ok(!bossBrainStep(step.brain, 0.05, { hpFraction: 0.4 }, CFG).events.some((e) => e.type === 'enrage'), 'only once');
+});
+
+test('a boss without the enrage mechanic never changes phase', () => {
+  const brain = createBossBrain({ attack: JAB, rage: RAGE, mechanics: ['guard'] }, 1);
+  const { brain: after, types } = run(brain, 10, { hpFraction: 0.1 });
+  assert.ok(!after.enraged && !types.includes('enrage'));
+});
+
+test('all the rage attacks keep the fixed average damage rate', async () => {
+  const { BOSSES } = await import('../src/bosses.js');
+  const { attackStats } = await import('../src/moves.js');
+  for (const { id, rage } of BOSSES) {
+    const stats = attackStats(rage);
+    const perSecond = (bossPunchDamage(100, stats, { bossKillSeconds: 10 }) * stats.strikes) / stats.interval;
+    assert.ok(Math.abs(perSecond - 10) < 1e-9, `${id} rage deals ${perSecond}/s`);
+  }
+});
+
+test('the big punch deals the same damage rate as any other attack', () => {
+  const perSecond = bossPunchDamage(100, { interval: 2.4, strikes: 1 }, { bossKillSeconds: 10 }) / 2.4;
+  assert.ok(Math.abs(perSecond - 10) < 1e-9);
+});
+
+test('world 1 bosses use no mechanics; later mini bosses one, world bosses all', async () => {
+  const { bossForLevel } = await import('../src/bosses.js');
+  const { MECHANICS } = await import('../src/rules.js');
+  for (const level of [1, 2, 3]) assert.deepEqual(bossForLevel(level).mechanics, [], `level ${level}`);
+  for (let world = 1; world < 10; world++) {
+    assert.equal(bossForLevel(world * 3 + 1).mechanics.length, 1, 'mini boss');
+    assert.deepEqual(bossForLevel(world * 3 + 2).mechanics, MECHANICS, 'world boss');
+  }
+  const minis = new Set([2, 3, 4].map((w) => bossForLevel(w * 3 + 1).mechanics[0]));
+  assert.equal(minis.size, 3, 'minis rotate through the mechanics');
+});
+
+test('a mini boss keeps its simple jab when it enrages', async () => {
+  const { bossForLevel } = await import('../src/bosses.js');
+  const mini = bossForLevel(4);
+  assert.equal(mini.rage.move, 'jab');
 });

@@ -185,6 +185,100 @@ export function comboStep({ combo, lastTap }, now, { comboWindow, finisherEvery,
   return { combo: chained, lastTap: now, finisher, multiplier: finisher ? jumpPunchMultiplier : 1 };
 }
 
+// ---- Boss mechanics: a small pure state machine ---------------------------------------
+// Which mechanics exist; each boss lists the ones it uses (bosses.js, from world 2 on).
+//   dodge   every `bigEvery`-th attack is a big punch announced `telegraph` seconds ahead. Dragging the way
+//           the arrow points sidesteps it; the boss is then dazed for `counterSeconds` and takes double damage.
+//   guard   the boss keeps a high guard between attacks: punches do `guardMultiplier` until it drops it.
+//   enrage  below `enrageBelow` health the boss is `enrageSpeed` times faster and switches to its `rage` attack.
+export const MECHANICS = ['dodge', 'guard', 'enrage'];
+
+// Phases: idle (guard up) -> attack. A normal attack goes recover (guard down) -> idle; the big punch goes
+// windup (arrow) -> swing -> recover, or -> stagger (dazed) when dodged.
+export function createBossBrain({ mechanics = [], attack, rage = attack }, firstDelay) {
+  return { mechanics, attack, rage, phase: 'idle', timer: firstDelay, attacks: 0, bigs: 0, dir: 0, drag: 0, dodged: false, enraged: false };
+}
+
+const knows = (brain, mechanic) => brain.mechanics.includes(mechanic);
+
+export const bossSpeed = (brain, { enrageSpeed } = CONFIG.boxing) => (brain.enraged ? enrageSpeed : 1);
+
+/** True while the guard is up and punches are muffled. */
+export const guardIsUp = (brain) => knows(brain, 'guard') && brain.phase === 'idle';
+
+/** How much of a punch's damage gets through right now. A flying jump punch breaks through the guard. */
+export function punchFactor(brain, piercing = false, { counterMultiplier, guardMultiplier } = CONFIG.boxing) {
+  if (brain.phase === 'stagger') return counterMultiplier;
+  return guardIsUp(brain) && !piercing ? guardMultiplier : 1;
+}
+
+/**
+ * Advances the boss by dt. `drag` is the player's signed sideways input this frame (pixels, + = right),
+ * `hpFraction` the boss's health share. Returns the next brain and what to show, in order:
+ *   { type: 'attack', attack }   throw a normal attack (`attack` = { interval, move })
+ *   { type: 'telegraph', dir }   the big punch is coming: glow, arrow towards `dir`
+ *   { type: 'dodged' }           the player is clear of it
+ *   { type: 'swing' }            the big punch starts moving
+ *   { type: 'bigHit' }           it lands on the champion
+ *   { type: 'whiff' }            it hits nothing: the boss is dazed
+ *   { type: 'recovered' }        the daze is over
+ *   { type: 'enrage' }           the second phase begins
+ */
+export function bossBrainStep(brain, dt, { hpFraction = 1, drag = 0 } = {}, cfg = CONFIG.boxing) {
+  const events = [];
+  let b = { ...brain };
+  if (!b.enraged && knows(b, 'enrage') && hpFraction <= cfg.enrageBelow) {
+    b.enraged = true;
+    events.push({ type: 'enrage' });
+  }
+  const speed = bossSpeed(b, cfg);
+  // Warnings and daze run in real time so the player's window never shrinks; the rest speeds up.
+  const realTime = b.phase === 'windup' || b.phase === 'swing' || b.phase === 'stagger';
+  b.timer -= realTime ? dt : dt * speed;
+
+  if (b.phase === 'windup' && !b.dodged) {
+    b.drag += drag * b.dir;
+    if (b.drag >= cfg.dodgeDrag) {
+      b.dodged = true;
+      events.push({ type: 'dodged' });
+    }
+  }
+
+  while (b.timer <= 0) {
+    const overrun = b.timer;
+    if (b.phase === 'idle') {
+      const attack = b.enraged ? b.rage : b.attack;
+      if (knows(b, 'dodge') && (b.attacks + 1) % cfg.bigEvery === 0) {
+        Object.assign(b, { phase: 'windup', timer: cfg.telegraph, dir: b.bigs % 2 ? -1 : 1, drag: 0, dodged: false });
+        events.push({ type: 'telegraph', dir: b.dir });
+      } else {
+        Object.assign(b, { phase: 'recover', timer: cfg.guardOpenSeconds, rest: Math.max(0.2, attack.interval - cfg.guardOpenSeconds) });
+        events.push({ type: 'attack', attack });
+      }
+      b.attacks += 1;
+    } else if (b.phase === 'windup') {
+      Object.assign(b, { phase: 'swing', timer: cfg.bigSwing });
+      events.push({ type: 'swing' });
+    } else if (b.phase === 'swing') {
+      b.bigs += 1;
+      if (b.dodged) {
+        Object.assign(b, { phase: 'stagger', timer: cfg.counterSeconds, rest: 0.5 });
+        events.push({ type: 'whiff' });
+      } else {
+        Object.assign(b, { phase: 'recover', timer: cfg.guardOpenSeconds, rest: cfg.guardOpenSeconds });
+        events.push({ type: 'bigHit' });
+      }
+    } else if (b.phase === 'stagger') {
+      Object.assign(b, { phase: 'idle', timer: b.rest });
+      events.push({ type: 'recovered' });
+    } else {
+      Object.assign(b, { phase: 'idle', timer: b.rest });
+    }
+    b.timer += overrun;
+  }
+  return { brain: b, events };
+}
+
 /** Taps per second needed to knock the boss out before the boss wins. */
 export function requiredTapRate(count, bossHp, damageLevel, cfg = CONFIG.boxing) {
   const { punch } = championStats(count, damageLevel, cfg);

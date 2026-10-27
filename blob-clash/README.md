@@ -27,6 +27,10 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 - **Moedas** na pista e **uma chave por fase**. Com 3 chaves, abre um **baú** de moedas.
 - **Boss:** a multidão se funde num campeão de luvas, que abre a luta com um **soco voador**.
   **TAP TO FIGHT!**: cada toque é um jab; o 5º toque seguido vira **JUMP PUNCH** (2,5× de dano).
+  A partir do mundo 2 os chefes ganham mecânicas (`mechanics` em `src/bosses.js`, estado puro em `bossBrainStep`):
+  **golpe grande** avisado 0,8 s (o chefe brilha, aparece **ARRASTE!** com a seta): arrastar para o lado (ou ←/→) desvia
+  e abre 1,5 s de contra-ataque com dano dobrado; **guarda alta**: jabs fazem 20% até o chefe baixar a guarda (o JUMP PUNCH
+  atravessa); **fúria** abaixo de 50% de vida: 25% mais rápido e troca de golpe (`rage`). Mini chefes usam só uma delas.
   Multidão maior dá mais vida e soco mais forte; todo chefe derruba qualquer campeão em ~10 s, então é preciso tocar rápido.
 - **30 fases em 10 mundos de 3** (`src/worlds.js`): a fase 1 de cada mundo termina num **mini chefe** (um chefe do elenco
   em 0,8×, na cor do mundo, só com jabs), a 2 no **chefão** do mundo e a 3 num **baú de moedas** (sem luta).
