@@ -263,6 +263,16 @@ export const CONFIG = {
     },
     wobbleMaxStep: 1 / 40, // seconds: bigger frame gaps are split so the springs stay stable
   },
+  // The winner's dance (game.js celebrate): it turns to face the camera, the camera closes in, it dances,
+  // then the win or lose screen comes up.
+  victory: {
+    turnSeconds: 0.4,
+    danceSeconds: 2.5,
+    zoomRate: 5, // camera follow speed while closing in (1/s): about 0.8 s to settle
+    yaw: 0.35, // rad: the dancer faces +z (towards the player's side), turned a little to the side
+    distance: [3.8, 2.6], // camera distance from the dancer: [base, per unit of its scale]
+    height: 0.7, // camera and look-at height, per unit of the dancer's scale
+  },
   reward: { base: 50, perLevel: 10 },
   upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
 };

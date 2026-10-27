@@ -40,7 +40,7 @@ export function idlePose(time, energy = 1, phase = 0) {
 
 // ---- Building blocks -----------------------------------------------------------
 // Straight right hand, fully extended. Mirror it for the left.
-const RIGHT_EXTENDED = { twist: 0.45, lean: 0.25, rRaise: 1.55, rSpread: 0.05, rElbow: 0.05, lRaise: 0.55, lElbow: 2.1 };
+const RIGHT_EXTENDED = { twist: 0.45, lean: 0.25, squash: 0.1, rRaise: 1.55, rSpread: 0.05, rElbow: 0.05, lRaise: 0.55, lElbow: 2.1 };
 const RIGHT_COCKED = { twist: -0.3, lean: 0, squash: -0.05, rRaise: 0.15, rElbow: 2.3 };
 
 const jabRight = (at, { cock = 0.2, recover = 0.3 } = {}) => [
@@ -187,6 +187,73 @@ export const CHAMPION_MOVES = {
   },
 };
 
+// ---- Victory dances (looped by the winner, 2-3 s; each ends where it starts) ------------
+// A beat is 0.3 s. `hop` bounces the whole body on the beat with a squash on landing and a stretch on the way up.
+const hop = (stretch = 0.12) => ({ lift: 0.35, squash: stretch });
+const land = { lift: 0, squash: -0.14, y: -0.05 };
+
+// Boogie: fists pumping alternately over a bouncing step (the fallback of the animators' Dance clip).
+export const BOOGIE = {
+  keys: [
+    [0, {}],
+    [0.15, { ...hop(), lRaise: 2.5, lElbow: 0.4, lSpread: 0.5, rRaise: 0.3, rElbow: 2, twist: 0.25, head: -0.1 }, 'outQuad'],
+    [0.3, { ...land, lRaise: 2.2, lSpread: 0.4, rRaise: 0.6, twist: 0.1, lLeg: 0.4, rLeg: -0.4 }, 'inQuad'],
+    [0.45, { ...hop(), rRaise: 2.5, rElbow: 0.4, rSpread: 0.5, lRaise: 0.3, lElbow: 2, twist: -0.25, head: 0.1 }, 'outQuad'],
+    [0.6, { ...land, rRaise: 2.2, rSpread: 0.4, lRaise: 0.6, twist: -0.1, lLeg: -0.4, rLeg: 0.4 }, 'inQuad'],
+    [0.8, {}, 'outBack'],
+  ],
+};
+
+// VIKING: both fists pound the chest, then a roar with the arms thrown wide.
+export const CHEST_BEAT = {
+  keys: [
+    [0, {}],
+    [0.12, { lean: -0.2, head: 0.3, squash: 0.08, lRaise: 0.9, rRaise: 0.9, lElbow: 2.5, rElbow: 2.5, lSpread: -0.45, rSpread: -0.45 }, 'outQuad'],
+    [0.2, { lean: 0.15, head: -0.1, squash: -0.14, lRaise: 0.75, rRaise: 0.75, lElbow: 2.5, rElbow: 2.5, lSpread: -0.55, rSpread: -0.55 }, 'inQuad'],
+    [0.32, { lean: -0.2, head: 0.3, squash: 0.08, lRaise: 0.9, rRaise: 0.9, lElbow: 2.5, rElbow: 2.5, lSpread: -0.45, rSpread: -0.45 }, 'outQuad'],
+    [0.4, { lean: 0.15, head: -0.1, squash: -0.14, lRaise: 0.75, rRaise: 0.75, lElbow: 2.5, rElbow: 2.5, lSpread: -0.55, rSpread: -0.55 }, 'inQuad'],
+    [0.6, { lean: -0.5, head: 0.7, squash: 0.15, lift: 0.3, lRaise: 1.6, rRaise: 1.6, lElbow: 0.3, rElbow: 0.3, lSpread: 1.3, rSpread: 1.3, lLeg: 0.4, rLeg: -0.4 }, 'outCubic'],
+    [0.8, { lean: -0.4, head: 0.6, squash: 0.1, lRaise: 1.5, rRaise: 1.5, lElbow: 0.4, rElbow: 0.4, lSpread: 1.2, rSpread: 1.2 }, 'linear'],
+    [1.05, {}, 'outBack'],
+  ],
+};
+
+// PUNK: air guitar. The left arm holds the neck out front, the right strums, the head bangs.
+const GUITAR = { lean: -0.3, lRaise: 1.35, lElbow: 0.35, lSpread: 0.25, rSpread: 0.15, lLeg: 0.5, rLeg: -0.5 };
+export const AIR_GUITAR = {
+  keys: [
+    [0, {}],
+    [0.15, { ...GUITAR, rRaise: 0.9, rElbow: 1.9, head: -0.35, twist: 0.2 }, 'outQuad'],
+    [0.3, { ...GUITAR, rRaise: 0.3, rElbow: 1.5, head: 0.2, squash: -0.08, twist: 0.1 }, 'inOutSine'],
+    [0.45, { ...GUITAR, rRaise: 0.9, rElbow: 1.9, head: -0.35, twist: 0.2 }, 'inOutSine'],
+    [0.6, { ...GUITAR, rRaise: 0.3, rElbow: 1.5, head: 0.2, squash: -0.08, twist: 0.1 }, 'inOutSine'],
+    [0.8, { ...GUITAR, lean: -0.55, head: 0.5, lift: 0.35, squash: 0.15, rRaise: 2.7, rElbow: 0.4, twist: 0.3 }, 'outCubic'], // the solo ends with a windmill
+    [1, { ...GUITAR, lean: -0.1, squash: -0.15, y: -0.05, rRaise: 0.6, rElbow: 1.6 }, 'inQuad'],
+    [1.2, {}, 'outBack'],
+  ],
+};
+
+// KING BLOB: waves the crown-hand over its head, the other hand on the hip, swaying.
+export const CROWN_WAVE = {
+  keys: [
+    [0, {}],
+    [0.2, { rRaise: 2.7, rElbow: 0.5, rSpread: 0.5, lRaise: 0.2, lElbow: 2.3, lSpread: 0.7, twist: 0.2, lean: -0.1, head: 0.2, lift: 0.2, squash: 0.08 }, 'outCubic'],
+    [0.5, { rRaise: 2.7, rElbow: 0.9, rSpread: 0.9, lRaise: 0.2, lElbow: 2.3, lSpread: 0.7, twist: -0.2, lean: -0.1, head: -0.2, squash: -0.08, y: -0.04 }, 'inOutSine'],
+    [0.8, { rRaise: 2.7, rElbow: 0.5, rSpread: 0.5, lRaise: 0.2, lElbow: 2.3, lSpread: 0.7, twist: 0.2, lean: -0.1, head: 0.2, squash: 0.05 }, 'inOutSine'],
+    [1.1, { rRaise: 2.7, rElbow: 0.9, rSpread: 0.9, lRaise: 0.2, lElbow: 2.3, lSpread: 0.7, twist: -0.2, lean: -0.1, head: -0.2, squash: -0.08, y: -0.04 }, 'inOutSine'],
+    [1.4, {}, 'outBack'],
+  ],
+};
+
+/** The dance a winner plays: `clip` from the animators' library (if any) over `move`, the keyframed version. */
+export const DANCES = {
+  champion: { clip: 'Dance', move: BOOGIE },
+  viking: { clip: null, move: CHEST_BEAT },
+  punk: { clip: null, move: AIR_GUITAR },
+  king: { clip: 'Wave', move: CROWN_WAVE },
+};
+export const danceFor = (bossId) => DANCES[bossId] ?? { clip: 'Dance', move: BOOGIE };
+
 // ---- Reactions (played additively on top of whatever is running) -----------------
 export const REACTIONS = {
   hurt: {
@@ -194,6 +261,15 @@ export const REACTIONS = {
       [0, {}],
       [0.05, { lean: -0.4, twist: 0.2, head: 0.5, squash: -0.12, dash: -0.25, lSpread: 0.6, rSpread: 0.4 }, 'outQuad'],
       [0.4, {}, 'outBack'],
+    ],
+  },
+  // Heavy landing: squashes flat, springs back taller, settles.
+  land: {
+    keys: [
+      [0, {}],
+      [0.08, { squash: -0.28, y: -0.08, lean: 0.15 }, 'outQuad'],
+      [0.3, { squash: 0.1 }, 'outBack'],
+      [0.5, {}, 'inOutSine'],
     ],
   },
   hurtBig: {
