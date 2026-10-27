@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { axeIsLow } from '../src/rules.js';
+import { axeIsLow, pusherGap } from '../src/rules.js';
 import { DOUBLE_ROW_GAP, generateLevel, hazardWeights } from '../src/level.js';
 import { CONFIG } from '../src/config.js';
 import { bossDifficulty, isGoodGate, requiredTapRate } from '../src/rules.js';
@@ -125,6 +125,32 @@ test('axes are raised long enough for the biggest crowd to cross, and stay out o
     assert.ok(2 * (axe.halfWidth + CONFIG.crowd.unitRadius) < CONFIG.track.width / 2);
     assert.ok(axe.length * Math.sin(axe.swing) >= CONFIG.track.width / 2 - 1, 'swings edge to edge');
   }
+});
+
+test('pillars and pushers never close the track to the largest crowd, and wait for world 4', () => {
+  const { maxRadius, unitRadius } = CONFIG.crowd;
+  const widest = 2 * (maxRadius + unitRadius); // diameter of the biggest crowd, bodies included
+  const half = CONFIG.track.width / 2;
+  let pillars = 0;
+  let pushers = 0;
+  for (let n = 1; n <= 30; n++) {
+    for (const o of generateLevel(n).obstacles) {
+      if (o.kind !== 'pillars' && o.kind !== 'pusher') continue;
+      assert.ok(n >= CONFIG.obstacle.unlockLevel[o.kind], `level ${n}: ${o.kind} too early`);
+      if (o.kind === 'pillars') {
+        pillars++;
+        const [left, right] = [...o.pads].sort((a, b) => a.x - b.x);
+        assert.ok((right.x - right.halfWidth) - (left.x + left.halfWidth) >= widest, `level ${n}: pillar gap too small`);
+        assert.ok(o.pads.every((p) => Math.abs(p.x) + p.halfWidth <= half + 1e-9), `level ${n}: pillar off the track`);
+      } else {
+        pushers++;
+        for (let t = 0; t < 2 * Math.PI / o.speed; t += 0.02) {
+          assert.ok(pusherGap(o, t) >= widest, `level ${n}: pusher closes the track`);
+        }
+      }
+    }
+  }
+  assert.ok(pillars > 0 && pushers > 0, 'both hazards show up in the campaign');
 });
 
 test('hazards unlock gradually and every world features its own kind', () => {

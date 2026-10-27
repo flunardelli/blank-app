@@ -24,6 +24,10 @@ export const PALETTE = {
   spike: 0xe8433f,
   axe: 0xcfd6ee,
   axeHandle: 0x8a5a3a,
+  pillar: 0x8a7fd0,
+  pillarCap: 0x4a3c9c,
+  pusher: 0xff6a3a,
+  pusherPiston: 0xcfd6ee,
   saw: 0x7d5ce0,
   sawTeeth: 0xff7a3a,
   sawRail: 0x2e2466,
@@ -81,8 +85,8 @@ export const CONFIG = {
     trapButtonRadius: 0.9,
     // Hazard pool: each kind unlocks at a level, and every level features its world's kind
     // (weight × featuredBoost), so neighbouring worlds feel different.
-    weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35, axe: 0.35 },
-    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3, axe: 7 }, // axe: first level of world 3
+    weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35, axe: 0.35, pillars: 0.3, pusher: 0.3 },
+    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3, axe: 7, pillars: 10, pusher: 10 }, // axe: first level of world 3; pillars, pusher: world 4
     featuredBoost: 3,
     spikeHalfDepth: 1.1,
     // Spike pads hug the track edges (like the reference): [centre x, half width] per pad.
@@ -105,6 +109,19 @@ export const CONFIG = {
     axeHalfWidth: 0.9,
     axeHalfDepth: 0.3,
     axeClearance: 1.6,
+    // Spiked pillars: pairs hugging both rails, spikes on top, narrowing the track. Each is at most
+    // 2 × `pillarMaxHalfWidth` wide, so the gap between a pair (track width − 4 × half width) still fits
+    // the largest crowd; a test checks it.
+    pillarMinHalfWidth: 0.5,
+    pillarMaxHalfWidth: 0.75,
+    pillarHalfDepth: 0.7,
+    pillarPairGap: 5, // a second pair follows this far behind
+    // Pusher: a big block slides in from one rail and back out (like a slider, but heavy and wide).
+    // It reaches at most `pusherReach` units into the track, which leaves the largest crowd a way past.
+    pusherHalfWidth: 1.8,
+    pusherHalfDepth: 1.1,
+    pusherReach: 2.8,
+    pusherSpeed: 1.6,
     // Jump: a ramp launches the blobs that cross it over the saws placed right behind it.
     rampHalfWidth: 3.4,
     rampHalfDepth: 1.4,

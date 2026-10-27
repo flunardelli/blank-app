@@ -85,6 +85,31 @@ function makeAxes(rng, d, cfg) {
   return rng.chance(0.5) ? [axe(rng, d, cfg)] : [axe(rng, d, cfg), axe(rng, d + 4.5, cfg, Math.PI)];
 }
 
+// Spiked pillars at both rails, one or two pairs in a row; the middle stays open for the biggest crowd.
+function makePillars(rng, d, cfg) {
+  const ob = cfg.obstacle;
+  const half = cfg.track.width / 2;
+  const pair = (rowD) => {
+    const halfWidth = ob.pillarMinHalfWidth + rng.next() * (ob.pillarMaxHalfWidth - ob.pillarMinHalfWidth);
+    const pads = [-1, 1].map((side) => ({ x: side * (half - halfWidth), halfWidth, halfDepth: ob.pillarHalfDepth }));
+    return { kind: 'pillars', d: rowD, pads };
+  };
+  return rng.chance(0.5) ? [pair(d)] : [pair(d), pair(d + ob.pillarPairGap)];
+}
+
+// A big block sliding in from one rail, or two from alternate rails taking turns.
+function makePushers(rng, d, cfg) {
+  const ob = cfg.obstacle;
+  const half = cfg.track.width / 2;
+  const phase = rng.next() * Math.PI * 2;
+  const pusher = (side, rowD, offset) => ({
+    kind: 'pusher', d: rowD, edgeX: side * half, halfWidth: ob.pusherHalfWidth, halfDepth: ob.pusherHalfDepth,
+    reach: ob.pusherReach, speed: ob.pusherSpeed, phase: phase + offset,
+  });
+  const side = rng.pick([-1, 1]);
+  return rng.chance(0.5) ? [pusher(side, d, 0)] : [pusher(side, d, 0), pusher(-side, d + 5, Math.PI)];
+}
+
 // A ramp that does not cover the whole track, with saws behind it: take the ramp and fly over them.
 function makeJump(rng, d, cfg) {
   const ob = cfg.obstacle;
@@ -105,6 +130,7 @@ function makeBombs(rng, d, cfg) {
 
 const OBSTACLE_MAKERS = {
   slider: makeSliders, spikes: makeSpikes, trap: makeTrap, saw: makeSaws, jump: makeJump, bombs: makeBombs, axe: makeAxes,
+  pillars: makePillars, pusher: makePushers,
 };
 
 /** Hazard weights for a level: only unlocked kinds, with this level's featured kind boosted. */

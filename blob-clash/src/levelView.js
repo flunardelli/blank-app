@@ -7,11 +7,11 @@ import {
   gummyMaterial, humanoidGeometry,
 } from './art/models.js';
 import { createBoss, createChampion } from './art/boxer.js';
-import { createAxe, createBomb, createRamp, createSaw, createSawRail } from './art/hazards.js';
+import { createAxe, createBomb, createPusher, createRamp, createSaw, createSawRail, createSpikedPillar } from './art/hazards.js';
 import { bossForLevel } from './bosses.js';
 import { makeJelly, withJellyPhases } from './art/jelly.js';
 import { Crowd } from './crowd.js';
-import { axeAngle, sliderX, sweepX } from './rules.js';
+import { axeAngle, pusherBox, sliderX, sweepX } from './rules.js';
 
 export const toZ = (d) => -d;
 
@@ -110,6 +110,24 @@ export function buildLevelView(scene, level) {
         object: place(axe.group, obstacle.d),
         update(time) { axe.pivot.rotation.z = axeAngle(obstacle, time); },
       };
+    }
+    if (obstacle.kind === 'pusher') {
+      const pusher = createPusher(obstacle.halfWidth, obstacle.halfDepth, obstacle.edgeX);
+      pusher.setCentre(pusherBox(obstacle, 0).x);
+      return {
+        obstacle,
+        object: place(pusher.group, obstacle.d),
+        update(time) { pusher.setCentre(pusherBox(obstacle, time).x); },
+      };
+    }
+    if (obstacle.kind === 'pillars') {
+      const group = new THREE.Group();
+      obstacle.pads.forEach((pad) => {
+        const pillar = createSpikedPillar(pad.halfWidth, pad.halfDepth);
+        pillar.position.x = pad.x;
+        group.add(pillar);
+      });
+      return { obstacle, object: place(group, obstacle.d) };
     }
     if (obstacle.kind === 'ramp') {
       return { obstacle, object: place(createRamp(obstacle.halfWidth, obstacle.halfDepth), obstacle.d, obstacle.x) };

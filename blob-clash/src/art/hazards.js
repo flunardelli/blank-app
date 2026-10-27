@@ -154,3 +154,55 @@ export function createAxe(length, pivotHeight, halfWidth) {
   group.traverse((o) => { o.castShadow = true; });
   return { group, pivot };
 }
+
+/** Stone pillar with a crown of spikes. Sits on the floor, centred on the origin. */
+export function createSpikedPillar(halfWidth, halfDepth, height = 2.2) {
+  const group = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(halfWidth * 2, height, halfDepth * 2), glossy(PALETTE.pillar));
+  shaft.position.y = height / 2;
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(halfWidth * 2 + 0.2, 0.25, halfDepth * 2 + 0.2), glossy(PALETTE.pillarCap));
+  cap.position.y = height + 0.12;
+  group.add(shaft, cap);
+  const spikeGeometry = new THREE.ConeGeometry(0.2, 0.8, 8);
+  const spikeMaterial = glossy(PALETTE.spike, { roughness: 0.2 });
+  for (let x = -halfWidth + 0.35; x <= halfWidth - 0.3; x += 0.6) {
+    for (let z = -halfDepth + 0.3; z <= halfDepth - 0.25; z += 0.6) {
+      const spike = new THREE.Mesh(spikeGeometry, spikeMaterial);
+      spike.position.set(x, height + 0.65, z);
+      group.add(spike);
+    }
+  }
+  group.traverse((o) => { o.castShadow = o.receiveShadow = true; });
+  return group;
+}
+
+/**
+ * Heavy block that slides in from a rail on a piston. Move `block.position.x` (its centre) and the
+ * piston stretches back to the rail by itself through `setCentre`.
+ */
+export function createPusher(halfWidth, halfDepth, edgeX) {
+  const side = Math.sign(edgeX);
+  const height = 1.6;
+  const group = new THREE.Group();
+  const block = new THREE.Mesh(new THREE.BoxGeometry(halfWidth * 2, height, halfDepth * 2), glossy(PALETTE.pusher));
+  block.position.y = height / 2;
+  // Dark chevron ribs on the inner face, so it reads as "this pushes".
+  const ribMaterial = glossy(PALETTE.pillarCap);
+  for (const dz of [-0.55, 0, 0.55]) {
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.18, height * 0.7, 0.28), ribMaterial);
+    rib.position.set(-side * (halfWidth + 0.05), height / 2, dz * halfDepth * 1.6);
+    block.add(rib);
+  }
+  const piston = new THREE.Mesh(new THREE.BoxGeometry(1, 0.35, 0.5), glossy(PALETTE.pusherPiston, { metalness: 0.5 }));
+  piston.position.y = height / 2;
+  group.add(block, piston);
+  group.traverse((o) => { o.castShadow = true; });
+  /** `x` is the block centre; the piston spans from the rail (just outside it) to the block. */
+  const setCentre = (x) => {
+    block.position.x = x;
+    const from = edgeX + side * (halfWidth + 0.4);
+    piston.scale.x = Math.max(0.01, Math.abs(from - x));
+    piston.position.x = (from + x) / 2;
+  };
+  return { group, block, setCentre };
+}

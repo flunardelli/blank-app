@@ -15,6 +15,8 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 - **Armadilha com botão:** espinhos na pista inteira. Pise no **botão verde** antes deles para recolhê-los, senão a multidão morre.
 - **Serras** (fase 2+) deslizam num trilho de um lado ao outro da pista.
 - **Machado pendular** (mundo 3+, a partir da fase 7): balança de uma borda à outra e só corta quando a lâmina está baixa; nas pontas do arco ela passa acima das cabeças.
+- **Pilares com espinhos** (mundo 4+, a partir da fase 10): um ou dois pares nas bordas, espinhos em cima, que estreitam a pista; o meio sempre deixa a maior multidão passar.
+- **Bloco empurrador** (mundo 4+): um bloco grande entra pela lateral e sai de novo, levando quem estiver na frente; a pista nunca fecha para a maior multidão (coberto por teste).
 - **Pulo** (fase 2+): uma rampa amarela lança quem passa por ela por cima das serras logo atrás; quem desvia da rampa encara as serras.
 - **Bombas** (fase 3+): duas fileiras, cada uma agrupada de um lado (alternando), com espaço para a maior multidão passar pelo outro. Encostou, explode e leva todo mundo no raio.
 - **Bonecos cinza** (fase 2+) andam de um lado para o outro; cada um que esbarra leva um blob junto. A partir da fase 4 aparecem os **brutamontes** (levam 5).
