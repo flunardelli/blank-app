@@ -58,6 +58,13 @@ export class Input {
     return Number(right) - Number(left);
   }
 
+  /** Signed sideways input since the previous call in pixels (+ = right), keys counted at `keyPixelsPerSecond`. */
+  consumeSwipe(dt, keyPixelsPerSecond) {
+    const pixels = this.dragPixels + this.keyboardAxis() * keyPixelsPerSecond * dt;
+    this.dragPixels = 0;
+    return pixels;
+  }
+
   /** Lateral displacement in world units since the previous call. */
   consumeLateral(dt, { lateralSpeed, dragSensitivity }) {
     const dx = this.keyboardAxis() * lateralSpeed * dt + this.dragPixels * dragSensitivity;

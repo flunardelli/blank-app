@@ -187,6 +187,11 @@ function createRig({ hipY, torso, head, arms, legs, frame = [1, 1] }) {
   };
 }
 
+/** Makes a boss's jelly glow (0 = off): the warning before its big punch. */
+export function setGlow(rig, amount, color = 0xff3a2a) {
+  rig.material.emissive.set(color).multiplyScalar(amount);
+}
+
 /** Puts a rig in `pose` (see moves.js); dash/lift move the root away from rig.anchor. */
 export function applyPose(rig, pose) {
   const stretch = 1 + pose.squash;
@@ -243,6 +248,7 @@ export function createBoss({ colors, glove: gloveColor, headgear, body }) {
     }, (geometry, restY) => paint(hipY + restY)(geometry)),
     legs: (side) => buildLeg(side, { hipX: 0.14, length: 0.62, radius: 0.1, boot: 0x2b2b3a }, paint(hipY)),
   });
+  rig.material = material;
   rig.root.scale.setScalar(2.6);
   return rig;
 }

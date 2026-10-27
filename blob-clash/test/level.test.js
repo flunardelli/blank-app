@@ -5,6 +5,7 @@ import { DOUBLE_ROW_GAP, generateLevel, hazardWeights } from '../src/level.js';
 import { CONFIG } from '../src/config.js';
 import { bossDifficulty, isGoodGate, requiredTapRate } from '../src/rules.js';
 import { WORLDS } from '../src/worlds.js';
+import { bossForLevel } from '../src/bosses.js';
 
 const HUMAN_TAPS_PER_SECOND = 6;
 
@@ -185,6 +186,22 @@ test('with the best crowd the boss needs a humane tapping speed on every level',
   }
   const first = generateLevel(1);
   assert.ok(requiredTapRate(first.bestCount, first.boss.hp, 1) <= 1.5, 'level 1 is gentle');
+});
+
+test('worlds 1 and 2 stay winnable by tapping alone, even against a guard', () => {
+  // Dodging is never needed. The guard is the one mechanic that slows a tapper down: it muffles jabs while
+  // it is up (everything but the open time after each attack), but not the flying jump punch.
+  const { guardMultiplier, guardOpenSeconds, finisherEvery, jumpPunchMultiplier } = CONFIG.boxing;
+  for (let n = 1; n <= 6; n++) {
+    const { boss, bestCount } = generateLevel(n);
+    const { attack, mechanics } = bossForLevel(n);
+    const guardUp = mechanics.includes('guard') ? Math.max(0, attack.interval - guardOpenSeconds) / attack.interval : 0;
+    const jab = guardUp * guardMultiplier + (1 - guardUp);
+    const perTap = ((finisherEvery - 1) * jab + jumpPunchMultiplier) / finisherEvery;
+    const rate = requiredTapRate(bestCount, boss.hp, 1) / perTap;
+    assert.ok(rate <= HUMAN_TAPS_PER_SECOND, `level ${n}: needs ${rate.toFixed(1)} taps/s`);
+  }
+  for (let n = 1; n <= 3; n++) assert.deepEqual(bossForLevel(n).mechanics, [], 'world 1 is plain punches');
 });
 
 test('boss strength rises through each world and eases off when the next one starts', () => {
