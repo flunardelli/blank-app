@@ -71,13 +71,24 @@ export class Game {
   }
 
   // Opens the map; `onBack` says where VOLTAR leads. Picking a square plays that level from its menu.
-  openMap(onBack = () => this.loadLevel(this.level.level)) {
+  openMap(onBack = () => this.loadLevel(this.level.level), celebrate = null) {
     this.state = 'map';
     this.hud.showMap({
       rows: mapRows(this.save),
       onBack,
       onPlay: (level) => this.loadLevel(level),
+      celebrate,
     });
+  }
+
+  // After a win: the map stamps the beaten square, the next one unlocks with a bounce, then it starts.
+  celebrateOnMap(beaten) {
+    const next = this.save.current;
+    this.openMap(() => this.loadLevel(next), { done: beaten, unlocked: next });
+    const token = (this.mapToken = (this.mapToken ?? 0) + 1);
+    setTimeout(() => {
+      if (this.state === 'map' && this.mapToken === token) this.loadLevel(next);
+    }, CONFIG.campaign.celebrateMs);
   }
 
   leaveTitle() {
@@ -598,7 +609,7 @@ export class Game {
     this.hud.setKeys(this.save.keys);
     this.hud.showComplete({
       level: this.level.level, coins: reward, multiplier: this.multiplier, chest,
-      onNext: () => (this.level.level >= LEVEL_COUNT ? this.showEnding() : this.loadLevel(this.save.current)),
+      onNext: () => (this.level.level >= LEVEL_COUNT ? this.showEnding() : this.celebrateOnMap(this.level.level)),
       onMap: () => this.openMap(),
     });
   }

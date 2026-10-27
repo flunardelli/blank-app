@@ -187,3 +187,10 @@ h1.stacked .big { font-size: 1.2em; }
 .map-cell.done::after { content: "✓"; position: absolute; left: -8px; top: -10px; width: 26px; height: 26px; display: grid; place-items: center;
   border: 3px solid var(--ink); border-radius: 50%; background: #3ddc5a; font-size: 16px; }
 @keyframes pulse { to { transform: scale(1.07); } }
+.map-cell.just-done { animation: stamp 0.6s cubic-bezier(.3,1.6,.5,1) both; }
+.map-cell.just-done::after { animation: stamp 0.5s 0.35s cubic-bezier(.3,1.6,.5,1) both; }
+.map-cell.just-unlocked { animation: unlock 0.7s 0.9s cubic-bezier(.3,1.6,.5,1) both, pulse 0.9s 1.6s ease-in-out infinite alternate; }
+.map-cell.just-unlocked .mark { animation: unlock 0.5s 0.9s both; }
+@keyframes stamp { from { transform: scale(1.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes unlock { 0% { transform: translateY(0) scale(1); filter: grayscale(1) brightness(0.55); } 50% { transform: translateY(-14px) scale(1.12); } 100% { transform: none; filter: none; } }
+

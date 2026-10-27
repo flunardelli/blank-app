@@ -82,6 +82,7 @@ export class SkinShop {
 
   /** Call every frame after game.update(). */
   update() {
+    this.dress(); // cheap when unchanged; catches a save replaced by a new game
     if (!this.panel.hidden && this.game.state !== 'menu') this.close(); // e.g. a dev cheat jumped to the boss
     const { player } = this.game;
     const dressed = this.worn !== 'classic';

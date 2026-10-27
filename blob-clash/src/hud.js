@@ -130,7 +130,6 @@ export class Hud {
   showMenu({ level, upgrades, onBuy, onMap }) {
     $('menu-level').textContent = `Level ${level}`;
     $('menu-map').onclick = onMap;
-    $('menu-map').addEventListener('pointerdown', (e) => e.stopPropagation());
     const cards = $('upgrade-cards');
     cards.replaceChildren(...upgrades.map((upgrade) => {
       const card = document.createElement('button');
@@ -148,7 +147,8 @@ export class Hud {
   }
 
   // Rows come from mapRows(); only squares that are not locked can be played.
-  showMap({ rows, onPlay, onBack }) {
+  // `celebrate` ({ done, unlocked }) stamps the square just beaten and bounces the one it unlocked.
+  showMap({ rows, onPlay, onBack, celebrate }) {
     const kindMark = { mini: '🥊', boss: '👑', chest: '🎁' };
     $('map-rows').replaceChildren(...rows.map(({ world, levels }) => {
       const row = Object.assign(document.createElement('div'), { className: 'map-row' });
@@ -160,6 +160,8 @@ export class Hud {
         cell.innerHTML = `<span class="mark">${status === 'locked' ? '🔒' : kindMark[kind]}</span><span class="num">${level}</span>`
           + (stars ? `<span class="stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>` : '');
         cell.onclick = () => onPlay(level);
+        if (celebrate?.done === level) cell.classList.add('just-done');
+        if (celebrate?.unlocked === level) cell.classList.add('just-unlocked');
         return cell;
       });
       row.innerHTML = `<h2 class="ink">${world.name}</h2><div class="map-cells"></div>`;
@@ -168,7 +170,7 @@ export class Hud {
     }));
     $('map-back').onclick = onBack;
     this.show('map');
-    $('map-rows').querySelector('.current')?.scrollIntoView({ block: 'center' });
+    $('map-rows').querySelector('.just-done, .current')?.scrollIntoView({ block: 'center' });
   }
 
   showComplete({ level, coins, multiplier, chest, onNext, onMap }) {

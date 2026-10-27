@@ -25,7 +25,7 @@ const pause = new Pause({
 hud.bindPause({
   onPause: () => pause.pause(),
   onResume: () => pause.resume(),
-  onMap: () => { pause.resume(); game.openMap(); },
+  onMap: () => { pause.resume(); game.loadLevel(game.level.level); game.openMap(); },
 });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && !e.repeat) pause.toggle();
