@@ -1,0 +1,306 @@
+// Central place for every tunable number and colour. Gameplay code never hard-codes these.
+export const PALETTE = {
+  player: { bottom: 0xffb52e, top: 0xff3a1c, bits: 0xff8a1a },
+  enemy: { bottom: 0xe8506a, top: 0x9e1430, bits: 0xff6f9a },
+  walker: { bottom: 0xe4e7f0, top: 0x8d93a6, bits: 0xb8bdcc },
+  glove: 0x2f56d6,
+  championGlove: 0xd8264a,
+  castleStone: 0xb8aed0,
+  castleRoof: 0x8a3ad8,
+  button: 0x3ee05a,
+  key: 0xffc21a,
+  goodGlass: 0x6fd0ff,
+  badGlass: 0xff7f8f,
+  trackLight: '#fff5f9',
+  trackDark: '#e8e2f8',
+  rail: 0xf7f3ff,
+  waterBase: '#3cc9f5',
+  waterLine: '#d8f7ff',
+  skyTop: '#62c6ff',
+  skyHorizon: '#e3f8ff',
+  post: 0x5244c2,
+  rope: 0xffe14a,
+  arch: 0x8c8cf0,
+  mat: 0xa8687f,
+  spikeBase: 0x4a2c9c,
+  spike: 0xe8433f,
+  axe: 0xcfd6ee,
+  axeHandle: 0x8a5a3a,
+  pillar: 0x8a7fd0,
+  pillarCap: 0x4a3c9c,
+  pusher: 0xff6a3a,
+  pusherPiston: 0xcfd6ee,
+  ball: 0x6a5acd,
+  ballStud: 0xff7a3a,
+  ballWarn: 0xffd23a, // yellow, not red: nothing on the floor should look like blood
+  saw: 0x7d5ce0,
+  sawTeeth: 0xff7a3a,
+  sawRail: 0x2e2466,
+  ramp: 0xffc93a,
+  bomb: 0x2a2440,
+  bombPad: 0x5a3cb8,
+  fuse: 0xffb02e,
+  coin: 0xffc21a,
+  ink: '#1d1a3a',
+};
+
+export const CONFIG = {
+  track: {
+    width: 10,
+    lanes: [-3.3, 0, 3.3],
+    segmentLength: 38,
+    introLength: 16,
+    minSegments: 6, // the first level; the last one has maxSegments (see levelInfo for the curve)
+    maxSegments: 12,
+  },
+  crowd: {
+    spacing: 0.55,
+    unitRadius: 0.3,
+    maxRadius: 3.2, // big crowds pack tighter instead of overflowing the track
+    maxVisible: 90,
+    forwardSpeed: 10,
+    lateralSpeed: 14,
+    dragSensitivity: 0.03, // world units per screen pixel
+  },
+  gates: {
+    addMin: 4,
+    addMax: 12,
+    multipliers: [2, 2, 3],
+    subMin: 2,
+    subMax: 8,
+    badChance: 0.45,
+    maxCount: 999,
+  },
+  enemy: {
+    minShare: 0.12, // enemy crowd size as a share of the best reachable count, on the first level
+    maxShare: 0.26,
+    pressureShare: 0.18, // added to both shares at full campaign pressure
+    maxVisible: 60,
+  },
+  skirmish: { minRatePerSecond: 8, rateFraction: 1.2 },
+  obstacle: {
+    // Sliders (melon slices, spring boxing gloves) live at a track edge and slide in by up to
+    // `sliderReach` units, then back out.
+    sliderRadius: 1.5,
+    sliderReach: 3.4,
+    sliderSpeed: 1.8,
+    // Trap: full-width spike field; stepping on its button (placed ahead of it) retracts it.
+    trapHalfDepth: 1.4,
+    trapButtonLead: 9,
+    trapButtonRadius: 0.9,
+    // Hazard pool: each kind unlocks at a level, and every level features its world's kind
+    // (weight × featuredBoost), so neighbouring worlds feel different.
+    weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35, axe: 0.35, ball: 0.35, pillars: 0.3, pusher: 0.3 },
+    // First level of a world: axe world 3, ball world 4, pillars world 5, pusher world 6. One new hazard per world.
+    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3, axe: 7, ball: 10, pillars: 13, pusher: 16 },
+    featuredBoost: 3,
+    spikeHalfDepth: 1.1,
+    // Spike pads hug the track edges (like the reference): [centre x, half width] per pad.
+    spikeLayouts: [
+      [[-3.75, 1.25], [3.75, 1.25]], // both edges, 5-unit gap in the middle
+      [[-2.9, 2.1]], // left half
+      [[2.9, 2.1]], // right half
+    ],
+    minSpikeGap: 4.5,
+    // Saw: a blade spinning on a rail across the track, sliding from side to side.
+    sawRadius: 0.9,
+    sawHalfDepth: 0.25,
+    sawSpeed: 1.0,
+    // Axe: a pendulum hung over the track. It swings by +-axeSwing radians; the blade only cuts while
+    // it is low (its centre below axeClearance), and swings out of reach near the ends of the arc.
+    axeLength: 5.6, // pivot to blade centre
+    axePivotHeight: 6.4,
+    axeSwing: 0.95,
+    axeSpeed: 1.5,
+    axeHalfWidth: 0.9,
+    axeHalfDepth: 0.3,
+    axeClearance: 1.6,
+    // Spiked pillars: pairs hugging both rails, spikes on top, narrowing the track. Each is at most
+    // 2 × `pillarMaxHalfWidth` wide, so the gap between a pair (track width − 4 × half width) still fits
+    // the largest crowd; a test checks it.
+    pillarMinHalfWidth: 0.5,
+    pillarMaxHalfWidth: 0.75,
+    pillarHalfDepth: 0.7,
+    pillarPairGap: 5, // a second pair follows this far behind
+    // Pusher: a big block slides in from one rail and back out (like a slider, but heavy and wide).
+    // It reaches at most `pusherReach` units into the track, which leaves the largest crowd a way past.
+    pusherHalfWidth: 1.8,
+    pusherHalfDepth: 1.1,
+    pusherReach: 2.8,
+    pusherSpeed: 1.6,
+    // Ball: rolls down one lane towards the player, then veers off the edge into the water. A yellow strip
+    // lights up `ballWarn` seconds before each run. The cycle is roll + fall + wait, offset per ball.
+    ball: {
+      radius: 1.25,
+      span: 6, // half the length of the run, centred on the obstacle's d
+      speed: 9,
+      fallTime: 0.7,
+      waitTime: 1.7,
+      warnTime: 1.1,
+    },
+    // Jump: a ramp launches the blobs that cross it over the saws placed right behind it.
+    rampHalfWidth: 3.4,
+    rampHalfDepth: 1.4,
+    jumpLength: 9,
+    jumpHeight: 2.6,
+    airborneHeight: 0.6, // above this a blob clears ground hazards
+    // Bombs: stepping into the trigger radius blows up every blob within the blast radius.
+    bombRadius: 0.6,
+    bombBlast: 1.5,
+    bombRowGap: 6,
+    // Each row packs its bombs on one side (mirrored for the other), so even the biggest crowd fits
+    // through the free side; rows alternate sides for a slalom.
+    bombSlots: [-4.2, -2.2],
+  },
+  // Gray walkers pacing across the track; each one takes `strength` blobs with it on contact.
+  walkers: {
+    fromLevel: 2,
+    radius: 0.45,
+    speed: 1.1,
+    perGroupMin: 1,
+    perGroupMax: 3, // reached gradually: one more walker per group every two phases
+    bruteFromLevel: 4, // big walkers that take several blobs
+    bruteChance: 0.35,
+    bruteStrength: 5,
+    bruteScale: 1.7,
+  },
+  // Sleeping gray blobs standing in a lane: touching one wakes it in the player's colour and joins the crowd.
+  recruits: {
+    chance: 0.7, // per segment
+    perGroupMin: 1,
+    perGroupMax: 5, // reached gradually along the campaign's pressure curve
+    radius: 0.4,
+    slotSpacing: 0.85,
+    offsetD: 25, // from the segment's start: past the hazards, before the walkers and the enemy crowd
+  },
+  coins: { perRow: 5, spacing: 1.6, value: 10 },
+  hud: { bubbleRange: 42 }, // only label crowds this close, so the horizon stays clean
+  boss: {
+    // Boss HP as a share of the best reachable crowd, from the first level (minDifficulty) to the last
+    // (maxDifficulty) along the campaign's pressure curve; kindFactor scales it per level kind.
+    // Required taps/s = 3 × difficulty, so the cap stays well under a human's tapping speed.
+    minDifficulty: 0.3,
+    maxDifficulty: 1.4,
+    kindFactor: { mini: 0.8, boss: 1, chest: 1 },
+    miniScale: 0.8, // mini bosses are a smaller roster boss in the world's colour
+    rigScale: 2.6, // a boss rig is modelled for a champion; this is its size in the ring
+    chestY: 3.4, // where hits on a size-1 boss spark, and how much higher per extra size
+    chestHeight: 6,
+    bubbleHeight: 8, // same for the health bubble over the boss during the run
+    worldBossScale: 1.5, // and a world boss towers over the ring (the camera and the hit spots follow)
+    mechanicsFromWorld: 2, // worlds before this one fight with plain punches only
+    miniAttack: { interval: 1.4, move: 'jab' }, // and only throw simple jabs
+    finishGap: 4, // straight run between the last segment and the finish line
+    ringDepth: 11,
+  },
+  // Boss fight: the crowd merges into one champion; every tap is a punch.
+  boxing: {
+    punchPerBlob: 1 / 30, // champion punch damage per blob in the crowd
+    bossKillSeconds: 10, // every boss knocks out any champion in this long: tap fast enough
+    tapCooldown: 0.06,
+    comboWindow: 0.6, // taps closer than this chain into a combo
+    finisherEvery: 5, // every 5th chained tap is a flying jump punch
+    jumpPunchMultiplier: 2.5,
+    openingMultiplier: 2.5, // the fight opens with a free flying punch
+    // Boss mechanics (worlds 2+, see bosses.js): a telegraphed big punch to dodge, a high guard, a second phase.
+    bigEvery: 3, // every 3rd attack of a boss that can dodge is the big punch
+    bigInterval: 2.4, // its damage is sized as if it were this slow a single strike
+    bigSwing: 0.45, // seconds from the end of the warning until the fist lands
+    telegraph: 0.8, // warning before the big punch: the boss glows and an arrow shows the way to dodge
+    dodgeDrag: 50, // pixels of drag (or 0.12 s of an arrow key) that count as a dodge
+    keyDragPerSecond: 420,
+    counterSeconds: 1.5, // the boss is dazed after a miss...
+    counterMultiplier: 2, // ...and takes double damage
+    guardMultiplier: 0.2, // punches into a raised guard
+    guardOpenSeconds: 1, // the guard drops this long after every attack
+    enrageBelow: 0.5, // boss health share that starts the second phase
+    enrageSpeed: 1.25,
+  },
+  bonus: { maxMultiplier: 5, step: 0.2, tileDepth: 2.6 },
+  campaign: { starsAt: [2, 4], celebrateMs: 2200 }, // x1–x2 = 1 star, up to x4 = 2, above = 3; level count lives in worlds.js
+  // Dev-only shortcuts: each entry is a key sequence that jumps straight to the boss fight.
+  dev: {
+    skipCrowdShare: 0.7, // crowd handed to the player: at least this share of the level's best count
+    cheatTimeout: 3, // seconds allowed between two keys of a sequence
+    cheats: [['KeyB', 'KeyL', 'KeyO', 'KeyB'], ['KeyI', 'KeyD', 'KeyD', 'KeyQ', 'KeyD']],
+  },
+  keys: { perChest: 3, chestCoinsPerLevel: 60 },
+  // Chest stage (level 3 of every world): the crowd hops into a giant chest, the camera swings from the
+  // side to a front zoom while the lid jolts open and a fountain of coins bursts out. Times are seconds.
+  chest: {
+    coinsPerBlob: 5, // payout per blob that made it to the chest in the first world...
+    worldGrowth: 0.4, // ...and every later world pays this much more per blob (x1.4 in the 2nd, x1.8 in the 3rd)
+    approach: 0.9, // camera settles on the side view before the first hop
+    hopSpan: 1.4, // the first and the last blob take off this far apart
+    hopFlight: 0.7,
+    hopHeight: 4,
+    rotate: 1.2, // side -> front camera swing
+    lidDelay: 0.3, // chest shakes this long before the lid jumps open
+    lidOpen: 0.45,
+    lidAngle: 1.95, // rad
+    lidAjar: 0.3, // the gap the blobs hop into, until the lid slams shut
+    coins: 360,
+    coinStartY: 2.4,
+    coinSpeedUp: [9, 17],
+    coinSpeedOut: [1, 7],
+    coinPour: 0.5, // coins leave the chest spread over this long
+    coinFloor: 0.3, // coins vanish once they land (the floor leaves nothing behind)
+    coinVanish: 0.2,
+    gravity: 16,
+    camera: { sideRadius: 18, frontRadius: 9, sideHeight: 6.5, frontHeight: 5.5, lookY: 2.4, lookLead: 1.8 },
+  },
+  // Skinned jelly fighters (art/character.js): the body is one smooth mesh sampled from a blend of
+  // capsules and ellipsoids (art/bodySdf.js), bent by bones named like the RobotExpressive skeleton.
+  character: {
+    bindSpread: 0.45, // rad: arms hang this far outwards in the bind pose so they do not melt into the chest
+    cell: 0.035, // mesh resolution, rig units (smaller = smoother but slower to build at startup)
+    blend: 0.045, // how far neighbouring parts melt into each other
+    softness: 0.05, // how wide the gelatin bend around a joint is
+    influences: 4, // bones per vertex
+    blendSeconds: 0.15, // crossfade between a keyframed pose and a retargeted clip, or two clips
+    clipFile: 'assets/anim/RobotExpressive.glb', // CC0, Quaternius (three.js examples)
+    clips: ['Idle', 'Running', 'Punch', 'Death', 'Dance', 'ThumbsUp', 'Wave', 'Jump'],
+    // Seconds into the retargeted Punch at which the fist lands; the clip is sped up or slowed down so
+    // that this frame meets the move's `hits` time.
+    clipImpact: { Punch: 0.3 },
+    // Springs that let the body lag behind its bones and wobble when they stop: [stiffness, damping] per bone.
+    wobble: {
+      Abdomen: [260, 14], Torso: [220, 12], Head: [180, 10],
+      UpperArmL: [300, 16], UpperArmR: [300, 16], LowerArmL: [300, 16], LowerArmR: [300, 16],
+    },
+    wobbleMaxStep: 1 / 40, // seconds: bigger frame gaps are split so the springs stay stable
+  },
+  // Synthesized sound (src/audio.js). A note is { f: Hz, to?: Hz glide target, at: s offset, d: s length, type, gain }.
+  audio: {
+    master: 0.5,
+    musicGain: 0.22,
+    musicTempo: 0.2, // seconds per step of the looping tune
+    musicLookahead: 1.2, // seconds of music scheduled ahead of the clock
+    musicTick: 400, // ms between scheduler runs
+    musicScale: [261.6, 329.6, 392, 523.3, 392, 329.6], // C major arpeggio, one note per step
+    musicBass: [130.8, 130.8, 98, 98], // one bass note per bar of 6 steps (cycles)
+    vibrateMs: { heavy: 40, knockOut: [60, 40, 90] },
+  },
+  // Emoji bubbles over the crowd (src/hud.js): few, short, and never more than `max` on screen.
+  emoji: {
+    max: 2,
+    lifeMs: 1200,
+    cooldownMs: 700, // between two bubbles of the same mood, so a pile-up of losses isn't a swarm
+    bigCrowd: 20, // blobs at the boss that earn the cool face
+    goodGate: '😀',
+    bigCrowdFace: '😎',
+    loss: '😮',
+  },
+  // The winner's dance (game.js celebrate): it turns to face the camera, the camera closes in, it dances,
+  // then the win or lose screen comes up.
+  victory: {
+    turnSeconds: 0.4,
+    danceSeconds: 2.5,
+    zoomRate: 5, // camera follow speed while closing in (1/s): about 0.8 s to settle
+    yaw: 0.35, // rad: the dancer faces +z (towards the player's side), turned a little to the side
+    distance: [3.8, 2.6], // camera distance from the dancer: [base, per unit of its scale]
+    height: 0.7, // camera and look-at height, per unit of the dancer's scale
+  },
+  reward: { base: 50, perLevel: 10 },
+  upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
+};

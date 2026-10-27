@@ -1,0 +1,974 @@
+// Game state machine: menu -> running <-> skirmish -> merge -> boxing -> bonus -> complete | lost.
+// Chest levels skip the fight: running <-> skirmish -> chest -> complete.
+import * as THREE from 'three';
+import { CONFIG, PALETTE } from './config.js';
+import { Effects } from './effects.js';
+import { generateLevel } from './level.js';
+import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './levelView.js';
+import { clipDuration } from './anim.js';
+import { AnimPlayer, clipLibrary } from './animPlayer.js';
+import { BOSS_BODY, CHAMPION_BODY } from './art/bodySpecs.js';
+import { setGlow } from './art/boxer.js';
+import { bossForLevel } from './bosses.js';
+import {
+  attackStats, BOSS_MOVES, CHAMPION_MOVES, CHARGE, DANCES, danceFor, GUARD, GUARD_UP, idlePose, KNOCKED_OUT, REACTIONS, RELAX, STAGGERED,
+} from './moves.js';
+import {
+  applyGate, blastVictims, bonusMultiplier, bossBrainStep, bossPunchDamage, bossSpeed, championStats, chestReward, chooseGate,
+  circlesOverlap, clashRate, clashStep, comboStep, createBossBrain, crossesObstacle, guardIsUp, jumpLift, obstacleHits, onRamp,
+  pressesButton, punchFactor, rewardCoins,
+  startBlobsFor, sweepX, upgradeCost,
+} from './rules.js';
+import { createSequences } from './cheat.js';
+import { ChestStage } from './chestStage.js';
+import { chestStageCoins, coinsPerBlob, hopDelays } from './chest.js';
+import { completeLevel, hasProgress, totalStars } from './progress.js';
+import { mapRows } from './map.js';
+import { LEVEL_COUNT, levelInfo, worldForLevel } from './worlds.js';
+import { loadSave, resetSave, writeSave } from './save.js';
+import { Cooldown } from './emoji.js';
+
+const UPGRADES = [
+  { id: 'damage', title: 'Damage', icon: '🥊' },
+  { id: 'blobs', title: 'Blobs', icon: '🫧' },
+];
+
+const cameraGoal = new THREE.Vector3();
+const lookGoal = new THREE.Vector3();
+const lookCurrent = new THREE.Vector3();
+const bubbleAnchor = new THREE.Vector3();
+
+export class Game {
+  constructor({ world, hud, input, audio }) {
+    this.world = world;
+    this.audio = audio;
+    this.emojiCooldown = new Cooldown(CONFIG.emoji.cooldownMs);
+    this.hud = hud;
+    this.input = input;
+    this.save = loadSave();
+    this.effects = new Effects(world.scene);
+    this.player = createPlayerCrowd(world.scene);
+    this.champion = createPlayerChampion();
+    this.championAnim = new AnimPlayer(GUARD);
+    world.scene.add(this.champion.root);
+    this.time = 0;
+    this.view = null;
+    input.onPress(() => {
+      if (this.state === 'menu') this.start();
+      else if (this.state === 'boxing') this.championPunch();
+    });
+    const cheats = createSequences(CONFIG.dev.cheats, { timeout: CONFIG.dev.cheatTimeout });
+    input.onKey((code) => {
+      if (cheats.feed(code, performance.now() / 1000) !== null) this.skipToBoss();
+    });
+    this.loadLevel(this.save.current);
+    this.showTitle();
+    // The animator-made clips arrive a little after the first frame; until then (or if they fail) the keyframed moves play.
+    clipLibrary.load([BOSS_BODY, CHAMPION_BODY]).catch((error) => console.warn('Retargeted clips unavailable:', error));
+  }
+
+  // ---- Title screen -------------------------------------------------------------
+  // The level behind the title is already loaded, so Continue only has to reveal its menu.
+  showTitle() {
+    this.state = 'title';
+    this.hud.showTitle({
+      level: this.save.current,
+      hasProgress: hasProgress(this.save),
+      onContinue: () => this.leaveTitle(),
+      onMap: () => this.openMap(() => this.showTitle()),
+      onNew: () => {
+        this.save = resetSave();
+        this.loadLevel(this.save.current);
+      },
+    });
+  }
+
+  // Opens the map; `onBack` says where VOLTAR leads. Picking a square plays that level from its menu.
+  openMap(onBack = () => this.loadLevel(this.level.level), celebrate = null) {
+    this.state = 'map';
+    this.hud.showMap({
+      rows: mapRows(this.save),
+      onBack,
+      onPlay: (level) => this.loadLevel(level),
+      celebrate,
+    });
+  }
+
+  // After a win: the map stamps the beaten square, the next one unlocks with a bounce, then it starts.
+  celebrateOnMap(beaten) {
+    const next = this.save.current;
+    this.openMap(() => this.loadLevel(next), { done: beaten, unlocked: next });
+    const token = (this.mapToken = (this.mapToken ?? 0) + 1);
+    setTimeout(() => {
+      if (this.state === 'map' && this.mapToken === token) this.loadLevel(next);
+    }, CONFIG.campaign.celebrateMs);
+  }
+
+  leaveTitle() {
+    this.state = 'menu';
+    this.showMenu();
+  }
+
+  // ---- Level lifecycle ----------------------------------------------------------
+  loadLevel(levelNumber) {
+    this.audio.stopMusic();
+    this.view?.dispose();
+    this.effects.clear();
+    this.hud.clearBubbles();
+    this.hud.showFight(false);
+    this.level = generateLevel(levelNumber);
+    this.boss = bossForLevel(levelNumber);
+    this.bossAttack = attackStats(this.boss.attack);
+    this.bossAnim = new AnimPlayer(GUARD);
+    this.championAnim = new AnimPlayer(GUARD);
+    this.brain = null;
+    this.guarding = false;
+    this.hitStop = 0;
+    this.cameraKick = 0;
+    this.spotlight = null;
+    const { theme } = worldForLevel(levelNumber);
+    this.world.setTheme(theme);
+    this.view = buildLevelView(this.world.scene, this.level, theme);
+
+    this.state = 'menu';
+    this.nextGate = 0;
+    this.nextEnemy = 0;
+    this.remainingCoins = [...this.level.coins];
+    this.runCoins = 0;
+    this.keyTaken = false;
+    this.fight = null;
+    this.chestStage = null;
+    this.stageCoins = 0;
+
+    this.player.center = { x: 0, d: 0 };
+    this.player.units = [];
+    this.player.setCount(startBlobsFor(this.save.upgrades.blobs));
+    this.player.mood = 'idle';
+    this.champion.root.visible = false;
+
+    this.playerBubble = this.hud.createBubble('player');
+    this.bossBubble = this.hud.createBubble('boss');
+    this.view.enemies.forEach((e) => { e.bubble = this.hud.createBubble('enemy'); });
+
+    this.snapCamera = true;
+    this.hud.setCoins(this.save.coins);
+    this.hud.setLevel(levelNumber);
+    this.hud.setKeys(this.save.keys);
+    this.showMenu();
+  }
+
+  showMenu() {
+    const { upgrades, coins } = this.save;
+    this.hud.showMenu({
+      level: this.level.level,
+      upgrades: UPGRADES.map((u) => ({
+        ...u, level: upgrades[u.id], cost: upgradeCost(upgrades[u.id]), affordable: coins >= upgradeCost(upgrades[u.id]),
+      })),
+      onBuy: (id) => this.buyUpgrade(id),
+      onMap: () => this.openMap(),
+    });
+  }
+
+  buyUpgrade(id) {
+    const cost = upgradeCost(this.save.upgrades[id]);
+    if (this.state !== 'menu' || this.save.coins < cost) return;
+    this.save.coins -= cost;
+    this.save.upgrades[id] += 1;
+    writeSave(this.save);
+    this.hud.setCoins(this.save.coins);
+    if (id === 'blobs') this.player.setCount(startBlobsFor(this.save.upgrades.blobs));
+    this.showMenu();
+  }
+
+  start() {
+    this.state = 'running';
+    this.player.mood = 'run';
+    this.hud.hideScreens();
+    this.audio.startMusic();
+  }
+
+  // Dev cheat: jump to the boss fight from the menu or the run, with a crowd that can win it.
+  skipToBoss() {
+    if (this.state === 'menu') this.start();
+    if (this.state !== 'running') return;
+    const { player, level } = this;
+    this.nextGate = this.view.gates.length;
+    this.nextEnemy = this.view.enemies.length;
+    player.setCount(Math.max(player.count, Math.ceil(level.bestCount * CONFIG.dev.skipCrowdShare)));
+    player.center.d = level.finishD - 1;
+    player.units.forEach((u) => { u.d = u.prevD = player.center.d; u.x = player.center.x; delete u.jump; u.lift = 0; });
+    this.hud.showBanner('DEV');
+    this.finishRun();
+  }
+
+  // ---- Frame update -------------------------------------------------------------
+  update(rawDt) {
+    // Hit stop: big impacts freeze the action for a few frames so they land with weight.
+    const dt = this.hitStop > 0 ? rawDt * 0.12 : rawDt;
+    this.hitStop -= rawDt;
+    this.time += dt;
+    if (this.state === 'running') this.updateRunning(dt);
+    else if (this.state === 'skirmish') this.updateSkirmish(dt);
+    else if (this.state === 'boxing') this.updateBoxing(dt);
+    else if (this.state === 'chest') this.chestStage.update(dt);
+
+    this.updateJumps();
+    this.animateScene(dt);
+    this.player.update(dt, this.time);
+    this.view.enemies.forEach(({ crowd }) => crowd.update(dt, this.time));
+    this.effects.update(dt);
+    this.updateCamera(dt);
+    this.updateHud();
+  }
+
+  updateRunning(dt) {
+    const { player } = this;
+    const maxX = Math.max(0, CONFIG.track.width / 2 - player.radius);
+    player.center.d += CONFIG.crowd.forwardSpeed * dt;
+    player.center.x = THREE.MathUtils.clamp(player.center.x + this.input.consumeLateral(dt, CONFIG.crowd), -maxX, maxX);
+
+    this.checkGates();
+    this.checkPickups();
+    this.checkButtons();
+    this.checkJumps();
+    this.checkObstacles();
+    this.checkBalls();
+    this.checkBombs();
+    this.checkWalkers();
+    this.checkRecruits();
+    this.checkEnemies();
+
+    if (player.count <= 0) this.lose();
+    else if (player.center.d >= this.level.finishD - 1) this.finishRun();
+  }
+
+  // Emoji bubble over the crowd; `mood` keeps one kind of bubble from repeating faster than the cooldown.
+  say(mood, face) {
+    if (!this.emojiCooldown.ready(mood, performance.now())) return;
+    const { player } = this;
+    bubbleAnchor.set(player.center.x, 3, toZ(player.center.d));
+    this.hud.showEmoji(face, bubbleAnchor, this.world.camera);
+  }
+
+  checkGates() {
+    const gate = this.view.gates[this.nextGate];
+    if (!gate || this.player.center.d < gate.pair.d) return;
+    this.nextGate += 1;
+    const chosen = chooseGate(gate.pair, this.player.center.x);
+    const before = this.player.count;
+    const removed = this.player.setCount(applyGate(before, chosen));
+    if (this.player.count > before) {
+      this.audio.play('goodGate');
+      this.say('good', CONFIG.emoji.goodGate);
+    } else {
+      this.audio.play('badGate');
+      this.say('loss', CONFIG.emoji.loss);
+    }
+    removed.forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
+    const panel = gate.panels[chosen === gate.pair.left ? 0 : 1];
+    this.effects.tween(0.35, (k) => {
+      panel.glass.material.opacity = 0.5 + Math.sin(k * Math.PI) * 0.4;
+      panel.label.scale.setScalar(1 + Math.sin(k * Math.PI) * 0.4);
+    }, () => { panel.glass.visible = panel.label.visible = false; });
+  }
+
+  // Coins and the key are collected by any part of the crowd's footprint.
+  inReach(x, d, margin = 0.6) {
+    const { center } = this.player;
+    const reach = this.player.radius + margin;
+    return Math.abs(d - center.d) <= reach && Math.abs(x - center.x) <= reach;
+  }
+
+  collectAnimation(mesh) {
+    const startY = mesh.position.y;
+    this.effects.tween(0.3, (k) => {
+      mesh.position.y = startY + k * 2.5;
+      mesh.scale.setScalar(1 - k);
+    }, () => { mesh.visible = false; });
+  }
+
+  checkPickups() {
+    const coinsBefore = this.remainingCoins.length;
+    this.remainingCoins = this.remainingCoins.filter((coin) => {
+      if (!this.inReach(coin.x, coin.d)) return true;
+      this.runCoins += CONFIG.coins.value;
+      this.hud.setCoins(this.save.coins + this.runCoins);
+      this.collectAnimation(this.view.coins.get(coin.id));
+      return false;
+    });
+    if (this.remainingCoins.length < coinsBefore) this.audio.play('coin'); // one ping per frame, however many were grabbed
+    const { key } = this.level;
+    if (!this.keyTaken && this.inReach(key.x, key.d)) {
+      this.keyTaken = true;
+      this.audio.play('key');
+      this.collectAnimation(this.view.key);
+      this.hud.setKeys(Math.min(CONFIG.keys.perChest, this.save.keys + 1));
+    }
+  }
+
+  // Any blob touching a trap's button retracts that trap's spikes.
+  checkButtons() {
+    const { unitRadius } = CONFIG.crowd;
+    for (const trap of this.view.obstacles) {
+      if (trap.obstacle.kind !== 'trap' || !trap.armed) continue;
+      const { button } = trap.obstacle;
+      if (Math.abs(button.d - this.player.center.d) > this.player.radius + 2) continue;
+      if (!this.player.units.some((u) => pressesButton(button, u.x, u.d, unitRadius))) continue;
+      trap.armed = false;
+      trap.button.cap.position.y = 0.12;
+      trap.button.cap.material = trap.button.cap.material.clone();
+      trap.button.cap.material.color.set(0x8a8a9a);
+      trap.button.cap.material.emissiveIntensity = 0;
+      this.effects.tween(0.4, (k) => { trap.field.spikes.position.y = -1.1 * k; });
+    }
+  }
+
+  nearObstacles(kind, margin = 3) {
+    const { center } = this.player;
+    const reach = this.player.radius + margin;
+    return this.view.obstacles.filter(({ obstacle, armed }) =>
+      armed !== false && (!kind || obstacle.kind === kind) && Math.abs(obstacle.d - center.d) < reach);
+  }
+
+  // Blobs high enough in a jump fly over every ground hazard.
+  grounded(unit) {
+    return (unit.lift ?? 0) < CONFIG.obstacle.airborneHeight;
+  }
+
+  /** Kills visible bodies by index; hidden ones (count > maxVisible) die with the same share. */
+  killUnits(indices, { shake = 0.4 } = {}) {
+    const { player } = this;
+    const hidden = player.count - player.units.length;
+    const hiddenLosses = Math.round(hidden * (indices.length / player.units.length));
+    player.kill(indices).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
+    player.setCount(player.count - hiddenLosses);
+    this.effects.shake = Math.max(this.effects.shake, shake);
+    this.say('loss', CONFIG.emoji.loss);
+  }
+
+  // Bodies crossing a ramp's line take off; each one follows its own arc (see updateJumps).
+  checkJumps() {
+    const ramps = this.nearObstacles('ramp');
+    for (const u of this.player.units) {
+      for (const { obstacle } of ramps) {
+        if (u.prevD < obstacle.d && u.d >= obstacle.d && onRamp(obstacle, u.x) && this.grounded(u)) u.jump = obstacle;
+      }
+    }
+  }
+
+  // Runs in every state, so a crowd that meets enemies mid-jump still comes down.
+  updateJumps() {
+    for (const u of this.player.units) {
+      if (!u.jump) continue;
+      u.lift = jumpLift(u.d - u.jump.d, u.jump.length);
+      if (u.lift === 0) delete u.jump;
+    }
+  }
+
+  checkObstacles() {
+    const near = this.nearObstacles();
+    if (!near.length) return;
+    const { unitRadius } = CONFIG.crowd;
+    // Each body is tested once, when it crosses the obstacle line. Testing overlap every frame
+    // would wipe the crowd: survivors re-pack into the dead bodies' slots, right on the spikes.
+    const hits = [];
+    this.player.units.forEach((u, i) => {
+      if (!this.grounded(u)) return;
+      if (near.some(({ obstacle }) => crossesObstacle(obstacle, this.time, u.x, u.prevD, u.d, unitRadius))) hits.push(i);
+    });
+    if (hits.length) this.killUnits(hits);
+  }
+
+  // A rolling ball moves, so there is no line to cross: it crushes every grounded body it overlaps.
+  checkBalls() {
+    const { unitRadius } = CONFIG.crowd;
+    const balls = this.nearObstacles('ball', CONFIG.obstacle.ball.span + CONFIG.obstacle.ball.radius + 1);
+    if (!balls.length) return;
+    const hits = [];
+    this.player.units.forEach((u, i) => {
+      if (this.grounded(u) && balls.some(({ obstacle }) => obstacleHits(obstacle, this.time, u.x, u.d, unitRadius))) hits.push(i);
+    });
+    if (hits.length) this.killUnits(hits, { shake: 0.6 });
+  }
+
+  // A bomb goes off when any blob touches it and takes every grounded blob in its blast.
+  checkBombs() {
+    const { unitRadius } = CONFIG.crowd;
+    const grounded = this.player.units.map((u, i) => ({ u, i })).filter(({ u }) => this.grounded(u));
+    for (const view of this.nearObstacles('bomb')) {
+      const { obstacle } = view;
+      if (!grounded.some(({ u }) => circlesOverlap(u.x, u.d, unitRadius, obstacle.x, obstacle.d, obstacle.radius))) continue;
+      view.armed = false;
+      view.object.visible = false;
+      const at = new THREE.Vector3(obstacle.x, 0.8, toZ(obstacle.d));
+      this.effects.impact(at, { stars: 5, scale: 1.3 });
+      this.effects.burst(at, 0xff8a2a, { count: 14, speed: 9, size: 0.22 });
+      this.effects.burst(at, PALETTE.bomb, { count: 8, speed: 7, size: 0.18 });
+      this.effects.dustRing(at.clone().setY(0.3), obstacle.blast);
+      const victims = blastVictims(obstacle, grounded.map(({ u }) => u)).map((k) => grounded[k].i);
+      if (victims.length) this.killUnits(victims, { shake: 0.8 });
+      else this.effects.shake = Math.max(this.effects.shake, 0.6);
+      return; // indices are stale after a kill; any other bomb waits for the next frame
+    }
+  }
+
+  // Each gray walker that bumps into the crowd takes `strength` blobs down with it.
+  checkWalkers() {
+    const { unitRadius } = CONFIG.crowd;
+    const { player } = this;
+    for (const view of this.view.walkers) {
+      const { walker } = view;
+      if (!view.alive || Math.abs(walker.d - player.center.d) > player.radius + walker.radius + 1) continue;
+      const x = sweepX(walker, this.time);
+      const touching = player.units.some((u) => this.grounded(u)
+        && circlesOverlap(u.x, u.d, unitRadius, x, walker.d, walker.radius));
+      if (!touching) continue;
+      view.alive = false;
+      view.mesh.visible = false;
+      this.effects.pop(x, toZ(walker.d), PALETTE.walker.bits, { size: 1.4 * view.mesh.userData.size });
+      const nearest = player.units
+        .map((u, i) => ({ i, dist: Math.hypot(u.x - x, u.d - walker.d) }))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, walker.strength)
+        .map(({ i }) => i);
+      this.killUnits(nearest, { shake: 0.25 * walker.strength });
+      return; // indices are stale after a kill
+    }
+  }
+
+  // Touching a sleeping blob wakes it: it pops into the player's colour and joins the crowd.
+  checkRecruits() {
+    const { unitRadius } = CONFIG.crowd;
+    const { player } = this;
+    for (const view of this.view.recruits) {
+      const { recruit } = view;
+      if (!view.alive || Math.abs(recruit.d - player.center.d) > player.radius + recruit.radius + 1) continue;
+      if (!player.units.some((u) => circlesOverlap(u.x, u.d, unitRadius, recruit.x, recruit.d, recruit.radius))) continue;
+      view.alive = false;
+      view.mesh.visible = false;
+      const at = new THREE.Vector3(recruit.x, 0.8, toZ(recruit.d));
+      this.effects.pop(recruit.x, toZ(recruit.d), PALETTE.player.bits, { size: 1.2 });
+      this.effects.burst(at, PALETTE.player.bits, { count: 8, speed: 5, size: 0.16 });
+      player.setCount(player.count + 1);
+      const joined = player.units.at(-1); // the new body starts where the sleeper stood
+      if (joined && joined.grow === 0) Object.assign(joined, { x: recruit.x, d: recruit.d, prevD: recruit.d });
+    }
+  }
+
+  checkEnemies() {
+    const target = this.view.enemies[this.nextEnemy];
+    if (!target) return;
+    const { player } = this;
+    if (player.center.d + player.radius < target.enemy.d - target.crowd.radius) return;
+    this.state = 'skirmish';
+    this.skirmish = { target, a: player.count, b: target.crowd.count, rate: clashRate(player.count, target.crowd.count) };
+    player.mood = target.crowd.mood = 'fight';
+  }
+
+  updateSkirmish(dt) {
+    const s = this.skirmish;
+    const { player } = this;
+    const enemy = s.target.crowd;
+    [s.a, s.b] = clashStep(s.a, s.b, s.rate, dt);
+    player.setCount(Math.ceil(s.a)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
+    enemy.setCount(Math.ceil(s.b)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.enemy.bits));
+    // Both crowds lean into each other.
+    const gap = enemy.center.d - player.center.d;
+    player.center.d += Math.min(gap * 0.5, CONFIG.crowd.forwardSpeed * 0.25 * dt);
+    this.effects.shake = Math.max(this.effects.shake, 0.25);
+
+    if (player.count <= 0) return this.lose();
+    if (enemy.count <= 0) {
+      this.nextEnemy += 1;
+      this.state = 'running';
+      player.mood = 'run';
+    }
+  }
+
+  // ---- Boss: the crowd merges into one champion, then it's a tapping boxing match ----
+  championSpot() {
+    return new THREE.Vector3(0, 0.25, toZ(this.level.boss.d - 5.2));
+  }
+
+  bossChest() {
+    const { chestY, chestHeight } = CONFIG.boss;
+    return new THREE.Vector3(0, chestY + (this.boss.size - 1) * chestHeight, toZ(this.level.boss.d) + 1.2);
+  }
+
+  // The run is over: chest levels end at the chest, every other level in a boss fight.
+  finishRun() {
+    if (this.level.kind === 'chest') this.startChest();
+    else this.startMerge();
+  }
+
+  // ---- Chest: the crowd hops in one by one, the camera swings to the front, the lid jolts open ----
+  startChest() {
+    const { player, view } = this;
+    this.state = 'chest';
+    const count = player.count;
+    this.multiplier = bonusMultiplier(count / this.level.bestCount);
+    const { worldIndex } = levelInfo(this.level.level);
+    this.stageCoins = chestStageCoins(count, worldIndex);
+    const perBlob = coinsPerBlob(worldIndex);
+    let landed = 0;
+    const stage = new ChestStage(view.chest, this.effects, { seed: this.level.level, onDone: () => this.complete() });
+    this.chestStage = stage;
+    this.hud.showBanner('TREASURE!');
+
+    const bodies = player.take(player.units.length);
+    player.setCount(0);
+    const { approach, hopFlight, hopHeight } = CONFIG.chest;
+    const target = stage.center.add(new THREE.Vector3(0, 0, 1)); // the gap in the lid, at the front
+    hopDelays(bodies.length).forEach((delay, i) => this.flyInto(bodies[i], target, approach + delay, {
+      flight: hopFlight, height: hopHeight, landY: 2.4,
+      onLand: () => {
+        stage.thump();
+        landed += perBlob; // the coin counter ticks up with every blob that drops in
+        this.hud.setCoins(this.save.coins + this.runCoins + landed);
+      },
+    }));
+  }
+
+  startMerge() {
+    const { player, champion } = this;
+    this.state = 'merge';
+    const stats = championStats(player.count, this.save.upgrades.damage);
+    this.fight = {
+      ...stats, maxHp: stats.hp, bossHp: this.level.boss.hp, bossMaxHp: this.level.boss.hp,
+      combo: 0, lastTap: -10, jumping: false, nextGlove: 0,
+    };
+    // The first attack's punch lands 0.8 s after a normal interval.
+    this.brain = createBossBrain(this.boss, this.bossAttack.interval + 0.8 - this.bossAttack.windup);
+    this.guarding = false;
+    const spot = this.championSpot();
+    this.championScale = 1.2 + Math.min(1.6, Math.cbrt(player.count) * 0.3);
+    champion.anchor.copy(spot);
+    champion.root.rotation.y = Math.PI;
+    champion.root.scale.setScalar(0.01);
+    champion.root.visible = true;
+    this.hud.showBanner(this.boss.banner);
+    if (player.count >= CONFIG.emoji.bigCrowd) this.say('big', CONFIG.emoji.bigCrowdFace);
+
+    const bodies = player.take(player.units.length);
+    player.setCount(0);
+    bodies.forEach((body, i) => this.flyInto(body, spot, i * 0.012));
+    this.effects.tween(0.9, (k) => champion.root.scale.setScalar(Math.max(0.01, this.championScale * k)), () => {
+      this.state = 'boxing';
+      this.hud.showFight(true, this.boss.colors.top);
+      this.jumpPunch(CONFIG.boxing.openingMultiplier); // the fight opens with a flying punch
+    });
+  }
+
+  flyInto(body, target, delay, { flight = 0.4, height = 2, landY = 1.2, onLand } = {}) {
+    const mesh = new THREE.Mesh(this.player.mesh.geometry, this.player.mesh.material);
+    mesh.scale.setScalar(0.9);
+    mesh.rotation.y = Math.PI;
+    const from = new THREE.Vector3(body.x, 0, toZ(body.d));
+    const to = target.clone().setY(landY);
+    this.effects.root.add(mesh);
+    this.effects.tween(flight + delay, (k) => {
+      const t = Math.max(0, (k * (flight + delay) - delay) / flight);
+      mesh.position.lerpVectors(from, to, t);
+      mesh.position.y += Math.sin(t * Math.PI) * height;
+      mesh.scale.setScalar(0.9 * (1 - t * 0.6));
+    }, () => {
+      this.effects.root.remove(mesh);
+      onLand?.();
+    });
+  }
+
+  later(seconds, callback) {
+    this.effects.tween(seconds, () => {}, callback);
+  }
+
+  // Runs `onHit` at every hit frame of a clip, so damage lands when the fist does.
+  onHits(clip, onHit, speed = 1) {
+    clip.hits.forEach((t, i) => this.later(t / speed, () => onHit(i)));
+  }
+
+  // ---- Player moves ----
+  championPunch() {
+    const f = this.fight;
+    if (this.time - f.lastTap < CONFIG.boxing.tapCooldown) return;
+    const step = comboStep(f, this.time);
+    Object.assign(f, { combo: step.combo, lastTap: step.lastTap });
+    if (step.finisher && !f.jumping) return this.jumpPunch(step.multiplier);
+    // Jabs land at once (taps must feel instant); mid-air taps still count, without a new pose.
+    if (!f.jumping) this.championAnim.play(CHAMPION_MOVES.jab[f.nextGlove]);
+    f.nextGlove = 1 - f.nextGlove;
+    this.hitBoss(f.punch * step.multiplier, { stars: 2, scale: 0.7 });
+  }
+
+  // Flying "superman" punch: crouch, launch with both fists forward, bounce off, land.
+  jumpPunch(multiplier) {
+    const f = this.fight;
+    const clip = CHAMPION_MOVES.jumpPunch;
+    f.jumping = true;
+    this.hud.popText('JUMP PUNCH!');
+    this.championAnim.play(clip);
+    this.onHits(clip, () => {
+      this.hitBoss(f.punch * multiplier, { stars: 7, scale: 1.4 }, REACTIONS.hurtBig, true);
+      this.effects.shake = 0.8;
+      this.hitStop = 0.09;
+      this.cameraKick = 1;
+    });
+    this.later(clipDuration(clip) - 0.2, () => {
+      f.jumping = false;
+      this.effects.dustRing(this.championSpot().setY(0.4), 1.2);
+    });
+  }
+
+  // `piercing` punches (the flying jump punch) break through a raised guard.
+  hitBoss(damage, impact, reaction = REACTIONS.hurt, piercing = false) {
+    const f = this.fight;
+    if (this.state !== 'boxing') return;
+    const factor = punchFactor(this.brain, piercing);
+    const blocked = factor < 1;
+    f.bossHp = Math.max(0, f.bossHp - damage * factor);
+    const at = this.bossChest().add(new THREE.Vector3((Math.random() - 0.5) * 1.2, (Math.random() - 0.5), 0));
+    if (blocked) {
+      this.audio.play('punch');
+      this.effects.impact(at, { stars: 0, scale: 0.4 }); // thud on the gloves: no flinch, no jelly bits
+      if (f.bossHp <= 0) this.knockOut();
+      return;
+    }
+    this.bossAnim.react(reaction);
+    const strong = factor > 1 || reaction === REACTIONS.hurtBig;
+    this.audio.play(strong ? 'heavy' : 'punch');
+    if (strong) this.audio.vibrate(CONFIG.audio.vibrateMs.heavy);
+    this.effects.impact(at, factor > 1 ? { ...impact, stars: impact.stars + 3, scale: impact.scale * 1.3 } : impact);
+    this.effects.burst(at, this.boss.colors.top, { count: 5, speed: 6, size: 0.18 });
+    this.effects.shake = Math.max(this.effects.shake, 0.15);
+    if (f.bossHp <= 0) this.knockOut();
+  }
+
+  // ---- Boss moves (bosses.js picks the move, moves.js choreographs it) ----
+  updateBoxing(dt) {
+    const f = this.fight;
+    const drag = this.input.consumeSwipe(dt, CONFIG.boxing.keyDragPerSecond);
+    const { brain, events } = bossBrainStep(this.brain, dt, { hpFraction: f.bossHp / f.bossMaxHp, drag });
+    this.brain = brain;
+    events.forEach((event) => this.onBossEvent(event));
+    // The guard comes back by itself (no event); dropping it always comes with an attack clip.
+    if (guardIsUp(brain) && !this.guarding) this.bossAnim.play(GUARD_UP, { hold: true });
+    this.guarding = guardIsUp(brain);
+  }
+
+  onBossEvent({ type, attack, dir }) {
+    const { champion } = this;
+    switch (type) {
+      case 'attack': {
+        const move = BOSS_MOVES[attack.move];
+        const speed = bossSpeed(this.brain);
+        const damage = bossPunchDamage(this.fight.maxHp, attackStats(attack));
+        this.bossAnim.play(move);
+        this.onHits(move, () => this.bossStrike(damage, move), speed);
+        break;
+      }
+      case 'telegraph':
+        this.bossAnim.play(CHARGE, { hold: true });
+        setGlow(this.view.boss, 0.6);
+        this.hud.showDodge(dir);
+        this.dodgeDir = dir;
+        break;
+      case 'dodged': {
+        // Sidestep along the ring (screen right is -z) and away from the camera's side.
+        const spot = this.championSpot();
+        const from = champion.anchor.clone();
+        const to = spot.clone().add(new THREE.Vector3(1.4, 0, -this.dodgeDir * 1.6));
+        this.hud.showDodge(0);
+        this.hud.popText('DODGE!');
+        this.championAnim.play(CHAMPION_MOVES.dodge);
+        this.effects.tween(0.15, (k) => champion.anchor.lerpVectors(from, to, k));
+        break;
+      }
+      case 'swing':
+        this.hud.showDodge(0);
+        setGlow(this.view.boss, 0);
+        this.bossAnim.play(BOSS_MOVES.smash);
+        break;
+      case 'bigHit':
+        this.bossStrike(bossPunchDamage(this.fight.maxHp, { interval: CONFIG.boxing.bigInterval, strikes: 1 }), BOSS_MOVES.smash);
+        break;
+      case 'whiff': {
+        const from = champion.anchor.clone();
+        const spot = this.championSpot();
+        this.hud.popText('COUNTER!');
+        this.bossAnim.play(STAGGERED, { hold: true });
+        this.effects.dustRing(this.view.boss.root.position.clone().setY(0.5), 3);
+        this.effects.tween(CONFIG.boxing.counterSeconds / 3, (k) => champion.anchor.lerpVectors(from, spot, k));
+        break;
+      }
+      case 'recovered':
+        this.bossAnim.play(RELAX);
+        break;
+      case 'enrage':
+        this.hud.popText('RAGE!');
+        setGlow(this.view.boss, 0.35);
+        this.effects.shake = 0.8;
+        break;
+      default:
+        break;
+    }
+  }
+
+  bossStrike(damage, { weight, impact }) {
+    const f = this.fight;
+    if (this.state !== 'boxing') return;
+    const heavy = weight > 1.2;
+    f.hp = Math.max(0, f.hp - damage);
+    this.audio.play(heavy ? 'heavy' : 'punch');
+    if (heavy) this.audio.vibrate(CONFIG.audio.vibrateMs.heavy);
+    this.championAnim.react(heavy ? REACTIONS.hurtBig : REACTIONS.hurt);
+    const at = this.champion.root.position.clone().setY(1.6 * this.championScale / 2 + 0.6);
+    this.effects.impact(at, { stars: Math.round(3 * weight), scale: 0.8 * weight });
+    this.effects.burst(at, PALETTE.player.bits, { count: Math.round(8 * weight), speed: 7, size: 0.2 });
+    if (impact === 'shockwave') this.effects.dustRing(this.view.boss.root.position.clone().setY(0.5), 3);
+    this.effects.shake = 0.4 * weight;
+    if (heavy) {
+      this.hitStop = 0.07;
+      this.cameraKick = 0.6;
+    }
+    if (f.hp <= 0) this.championDown();
+  }
+
+  knockOut() {
+    setGlow(this.view.boss, 0);
+    this.hud.showFight(false);
+    this.hud.popText('K.O.!');
+    this.audio.play('ko');
+    this.audio.vibrate(CONFIG.audio.vibrateMs.knockOut);
+    this.startBonus(this.fight.hp / this.fight.maxHp);
+  }
+
+  championDown() {
+    setGlow(this.view.boss, 0);
+    this.hud.showFight(false);
+    const { position } = this.champion.root;
+    this.champion.root.visible = false;
+    this.effects.burst(position.clone().setY(1.5), PALETTE.player.bits, { count: 40, speed: 10, size: 0.3 });
+    this.lose({ dance: true });
+  }
+
+  startBonus(healthFraction) {
+    this.state = 'bonus';
+    this.multiplier = bonusMultiplier(healthFraction);
+    const { tiles } = this.view.ladder;
+    const tile = tiles.find((t) => t.multiplier === this.multiplier) ?? tiles[tiles.length - 1];
+    const rig = this.view.boss;
+    const boss = rig.root;
+    const from = rig.anchor.clone();
+    const to = new THREE.Vector3(0, 0.25, toZ(this.level.ladderStart + tile.d));
+    const height = 3 + (from.z - to.z) * 0.06;
+    // The animators' clips when loaded: a thumbs-up for the champion, and the boss lands on its feet and
+    // collapses with their death clip. Without them the keyframed cheer plays and the boss lands flat.
+    const collapses = Boolean(clipLibrary.get(rig.body.spec, 'Death'));
+    this.championAnim.playClip('ThumbsUp', { loop: true, hold: true, fallback: CHAMPION_MOVES.cheer });
+    this.bossAnim.play(KNOCKED_OUT, { hold: true });
+    this.effects.impact(new THREE.Vector3(0, 4, from.z), { stars: 10, scale: 1.8 });
+    this.effects.shake = 1;
+    this.effects.tween(1.4 + (from.z - to.z) * 0.012, (k) => {
+      rig.anchor.lerpVectors(from, to, k);
+      rig.anchor.y += Math.sin(k * Math.PI) * height;
+      boss.rotation.x = -k * Math.PI * (collapses ? 4 : 3);
+    }, () => {
+      if (collapses) {
+        boss.rotation.x = 0;
+        rig.anchor.y = to.y;
+        this.bossAnim.playClip('Death', { hold: true, fallback: KNOCKED_OUT });
+      } else {
+        boss.rotation.x = -Math.PI / 2; // KO: flat on its back
+        rig.anchor.y = 0.6;
+      }
+      tile.tile.material.color.set(0x7cf05a);
+      // Cartoon landing: a dust ring and a burst of stars (no splatter).
+      this.effects.dustRing(new THREE.Vector3(to.x, 0.5, to.z), 3);
+      this.effects.impact(new THREE.Vector3(to.x, 1.5, to.z), { stars: 8, scale: 1.6 });
+      this.effects.shake = 1;
+      this.bossAnim.react(REACTIONS.land);
+      // Then the camera goes back to the champion, who turns to it and dances before the result.
+      this.later(0.9, () => this.celebrate(this.champion, this.championAnim, DANCES.champion, () => this.complete()));
+    });
+  }
+
+  // The winner turns to face the camera, the camera closes in and it dances; then `done` brings up the result.
+  celebrate(rig, anim, dance, done) {
+    const { turnSeconds, danceSeconds, yaw } = CONFIG.victory;
+    const from = rig.root.rotation.y;
+    const turn = Math.atan2(Math.sin(yaw - from), Math.cos(yaw - from)); // the short way round
+    this.spotlight = { rig, yaw };
+    anim.dance(dance);
+    this.effects.tween(turnSeconds, (k) => { rig.root.rotation.y = from + turn * k * k * (3 - 2 * k); });
+    this.later(danceSeconds, done);
+  }
+
+  // Front-on close-up of the dancer, sized by its scale.
+  spotlightShot({ rig, yaw }) {
+    const { position, scale } = rig.root;
+    const { distance, height } = CONFIG.victory;
+    const dist = distance[0] + distance[1] * scale.y;
+    const eye = position.y + height * scale.y;
+    return {
+      pos: [position.x + Math.sin(yaw) * dist, eye + 0.3 * scale.y, position.z + Math.cos(yaw) * dist],
+      look: [position.x, eye, position.z],
+    };
+  }
+
+  complete() {
+    this.spotlight = null;
+    this.state = 'complete';
+    this.audio.stopMusic();
+    this.audio.play('win');
+    const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
+    let chest = this.stageCoins;
+    if (this.keyTaken) this.save.keys += 1;
+    if (this.save.keys >= CONFIG.keys.perChest) {
+      chest += chestReward(this.level.level);
+      this.save.keys = 0;
+    }
+    this.save.coins += reward + chest;
+    this.save = completeLevel(this.save, this.level.level, this.multiplier);
+    writeSave(this.save);
+    this.hud.setCoins(this.save.coins);
+    this.hud.setKeys(this.save.keys);
+    this.hud.showComplete({
+      level: this.level.level, coins: reward, multiplier: this.multiplier, chest,
+      onNext: () => (this.level.level >= LEVEL_COUNT ? this.showEnding() : this.celebrateOnMap(this.level.level)),
+      onMap: () => this.openMap(),
+    });
+  }
+
+  // After the last level: the whole campaign is beaten.
+  showEnding() {
+    this.state = 'ending';
+    this.hud.showEnding({
+      stars: totalStars(this.save),
+      maxStars: LEVEL_COUNT * 3,
+      onMap: () => this.openMap(() => this.showEnding()),
+      onTitle: () => this.showTitle(),
+    });
+  }
+
+  // After a lost fight (`dance`) the boss celebrates on camera before the lose screen.
+  lose({ dance = false } = {}) {
+    this.state = 'lost';
+    this.audio.stopMusic();
+    this.audio.play('lose');
+    this.player.setCount(0).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
+    this.save.coins += this.runCoins; // keys only count on a win
+    writeSave(this.save);
+    this.hud.setCoins(this.save.coins);
+    this.hud.setKeys(this.save.keys);
+    const showLose = () => this.hud.showLose({
+      coins: this.runCoins, onContinue: () => this.loadLevel(this.level.level),
+    });
+    if (dance && this.view.boss) this.later(0.5, () => this.celebrate(this.view.boss, this.bossAnim, danceFor(this.boss.id), showLose));
+    else this.later(0.8, showLose);
+  }
+
+  // ---- Presentation -------------------------------------------------------------
+  animateScene(dt) {
+    this.view.update(this.time, dt);
+    for (const { walker, mesh, alive } of this.view.walkers) {
+      if (!alive) continue;
+      const step = this.time * 9 + walker.phase;
+      const heading = Math.cos(walker.speed * this.time + walker.phase); // sign of the walking direction
+      mesh.position.x = sweepX(walker, this.time);
+      mesh.position.y = Math.abs(Math.sin(step)) * 0.15;
+      // Turn smoothly into the walking direction, waddling side to side.
+      mesh.rotation.y = THREE.MathUtils.lerp(mesh.rotation.y, Math.sign(heading || 1) * Math.PI / 2, Math.min(1, dt * 8));
+      mesh.rotation.z = Math.sin(step) * 0.12;
+    }
+    for (const mesh of this.view.coins.values()) mesh.rotation.y += dt * 3;
+    this.view.key.rotation.y += dt * 2;
+    this.animateBoxers(dt);
+  }
+
+  // Both boxers bounce in guard and play their clips; before the bell the boss idles with the animators' clip.
+  animateBoxers(dt) {
+    const fighting = this.state === 'boxing';
+    const energy = fighting ? 1 : 0.35;
+    const ambient = fighting ? null : 'Idle';
+    if (this.view.boss) {
+      const speed = fighting && this.brain ? bossSpeed(this.brain) : 1; // an enraged boss moves faster
+      this.bossAnim.drive(this.view.boss, dt * speed, idlePose(this.time, energy), ambient);
+    }
+    if (this.champion.root.visible) {
+      this.championAnim.drive(this.champion, dt, idlePose(this.time, energy, 1.7), ambient);
+    }
+    this.cameraKick = Math.max(0, this.cameraKick - dt * 3);
+  }
+
+  cameraFocus() {
+    if (this.spotlight) return this.spotlightShot(this.spotlight);
+    const { center } = this.player;
+    const r = this.player.radius;
+    switch (this.state) {
+      case 'merge':
+      case 'boxing':
+      case 'lost': {
+        if (!this.fight) break;
+        // Side-on ring view like the reference: champion left, boss right.
+        const mid = toZ(this.level.boss.d - 2.6);
+        // Big hits punch the camera in a little.
+        const kick = this.cameraKick * 2.5;
+        // A bigger boss needs the camera further back and aimed higher to stay in frame.
+        const grow = this.boss.size - 1;
+        return { pos: [13 + grow * 9 - kick, 6.5 + grow * 4 - kick * 0.3, mid + 5 - kick * 0.4], look: [0, 2.8 + grow * 2.4, mid - 0.5] };
+      }
+      case 'chest':
+        return this.chestStage.camera();
+      case 'bonus':
+      case 'complete': {
+        if (!this.view.boss) break; // chest levels: the chest stage owns the camera
+        const { position } = this.view.boss.root;
+        return { pos: [position.x, 17, position.z + 11], look: [position.x, 0, position.z - 4] };
+      }
+      default:
+        break;
+    }
+    return {
+      pos: [center.x * 0.5, 7.5 + r * 0.9, toZ(center.d) + 8.5 + r * 0.8],
+      look: [center.x * 0.35, 0.6, toZ(center.d) - 7],
+    };
+  }
+
+  updateCamera(dt) {
+    const { camera } = this.world;
+    if (this.state !== 'lost' || this.fight) {
+      const focus = this.cameraFocus();
+      cameraGoal.fromArray(focus.pos);
+      lookGoal.fromArray(focus.look);
+    }
+    const rate = this.spotlight ? CONFIG.victory.zoomRate : this.state === 'bonus' || this.state === 'chest' ? 7 : 4;
+    const k = this.snapCamera ? 1 : Math.min(1, dt * rate);
+    this.snapCamera = false;
+    camera.position.lerp(cameraGoal, k);
+    lookCurrent.lerp(lookGoal, k);
+    const shake = this.effects.shake * 0.25;
+    camera.position.x += (Math.random() - 0.5) * shake;
+    camera.position.y += (Math.random() - 0.5) * shake;
+    camera.lookAt(lookCurrent);
+    this.world.follow(lookCurrent, this.time);
+  }
+
+  updateHud() {
+    const { camera } = this.world;
+    const { player, fight } = this;
+    this.hud.setProgress(player.center.d / this.level.finishD);
+    if (fight) this.hud.setFight(fight.hp / fight.maxHp, fight.bossHp / fight.bossMaxHp);
+
+    bubbleAnchor.set(player.center.x, 2.3, toZ(player.center.d));
+    this.hud.placeBubble(this.playerBubble, bubbleAnchor, camera, player.count, player.count > 0);
+
+    const inRange = (d) => d - player.center.d < CONFIG.hud.bubbleRange;
+    for (const { crowd, bubble } of this.view.enemies) {
+      bubbleAnchor.set(crowd.center.x, 2.2, toZ(crowd.center.d));
+      this.hud.placeBubble(bubble, bubbleAnchor, camera, crowd.count, crowd.count > 0 && inRange(crowd.center.d));
+    }
+
+    bubbleAnchor.set(0, 6.6 + (this.boss.size - 1) * CONFIG.boss.bubbleHeight, toZ(this.level.boss.d));
+    const showBossHp = this.level.kind !== 'chest' && (this.state === 'running' || this.state === 'skirmish');
+    this.hud.placeBubble(this.bossBubble, bubbleAnchor, camera, this.level.boss.hp, showBossHp && inRange(this.level.boss.d));
+  }
+}
