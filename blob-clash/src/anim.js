@@ -63,8 +63,9 @@ export class Animator {
     this.offset = {}; // what the running reactions added to the pose last frame, per channel
   }
 
-  play(clip, { hold = false } = {}) {
-    this.action = { clip, t: 0, hold, from: { ...this.pose } };
+  /** `loop` repeats the clip until something else plays; a looping clip should end where it starts. */
+  play(clip, { hold = false, loop = false } = {}) {
+    this.action = { clip, t: 0, hold, loop, from: { ...this.pose } };
   }
 
   /** Additive reaction; replaying one that is still running restarts it instead of stacking. */
@@ -84,12 +85,12 @@ export class Animator {
     if (action) {
       action.t += dt;
       const duration = clipDuration(action.clip);
-      const sampled = sampleClip(action.clip, action.t, this.base);
+      const sampled = sampleClip(action.clip, action.loop ? action.t % duration : action.t, this.base);
       // Ease in from the previous pose, and out into the idle at the end of the clip.
       const fadeIn = Math.min(1, action.t / this.fade);
-      const fadeOut = action.hold ? 1 : Math.max(0, Math.min(1, (duration - action.t) / this.fade));
+      const fadeOut = action.hold || action.loop ? 1 : Math.max(0, Math.min(1, (duration - action.t) / this.fade));
       pose = blendPose(idle, blendPose(action.from, sampled, fadeIn), fadeOut);
-      if (action.t >= duration && !action.hold) this.action = null;
+      if (action.t >= duration && !action.hold && !action.loop) this.action = null;
     }
     this.offset = {};
     this.reactions = this.reactions.filter((reaction) => {

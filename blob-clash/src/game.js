@@ -11,7 +11,7 @@ import { BOSS_BODY, CHAMPION_BODY } from './art/bodySpecs.js';
 import { setGlow } from './art/boxer.js';
 import { bossForLevel } from './bosses.js';
 import {
-  attackStats, BOSS_MOVES, CHAMPION_MOVES, CHARGE, GUARD, GUARD_UP, idlePose, KNOCKED_OUT, REACTIONS, RELAX, STAGGERED,
+  attackStats, BOSS_MOVES, CHAMPION_MOVES, CHARGE, DANCES, danceFor, GUARD, GUARD_UP, idlePose, KNOCKED_OUT, REACTIONS, RELAX, STAGGERED,
 } from './moves.js';
 import {
   applyGate, blastVictims, bonusMultiplier, bossBrainStep, bossPunchDamage, bossSpeed, championStats, chestReward, chooseGate,
@@ -125,6 +125,7 @@ export class Game {
     this.guarding = false;
     this.hitStop = 0;
     this.cameraKick = 0;
+    this.spotlight = null;
     const { theme } = worldForLevel(levelNumber);
     this.world.setTheme(theme);
     this.view = buildLevelView(this.world.scene, this.level, theme);
@@ -747,7 +748,7 @@ export class Game {
     const { position } = this.champion.root;
     this.champion.root.visible = false;
     this.effects.burst(position.clone().setY(1.5), PALETTE.player.bits, { count: 40, speed: 10, size: 0.3 });
-    this.lose();
+    this.lose({ dance: true });
   }
 
   startBonus(healthFraction) {
@@ -785,11 +786,37 @@ export class Game {
       this.effects.dustRing(new THREE.Vector3(to.x, 0.5, to.z), 3);
       this.effects.impact(new THREE.Vector3(to.x, 1.5, to.z), { stars: 8, scale: 1.6 });
       this.effects.shake = 1;
-      this.effects.tween(0.9, () => {}, () => this.complete());
+      this.bossAnim.react(REACTIONS.land);
+      // Then the camera goes back to the champion, who turns to it and dances before the result.
+      this.later(0.9, () => this.celebrate(this.champion, this.championAnim, DANCES.champion, () => this.complete()));
     });
   }
 
+  // The winner turns to face the camera, the camera closes in and it dances; then `done` brings up the result.
+  celebrate(rig, anim, dance, done) {
+    const { turnSeconds, danceSeconds, yaw } = CONFIG.victory;
+    const from = rig.root.rotation.y;
+    const turn = Math.atan2(Math.sin(yaw - from), Math.cos(yaw - from)); // the short way round
+    this.spotlight = { rig, yaw };
+    anim.dance(dance);
+    this.effects.tween(turnSeconds, (k) => { rig.root.rotation.y = from + turn * k * k * (3 - 2 * k); });
+    this.later(danceSeconds, done);
+  }
+
+  // Front-on close-up of the dancer, sized by its scale.
+  spotlightShot({ rig, yaw }) {
+    const { position, scale } = rig.root;
+    const { distance, height } = CONFIG.victory;
+    const dist = distance[0] + distance[1] * scale.y;
+    const eye = position.y + height * scale.y;
+    return {
+      pos: [position.x + Math.sin(yaw) * dist, eye + 0.3 * scale.y, position.z + Math.cos(yaw) * dist],
+      look: [position.x, eye, position.z],
+    };
+  }
+
   complete() {
+    this.spotlight = null;
     this.state = 'complete';
     this.audio.stopMusic();
     this.audio.play('win');
@@ -823,7 +850,8 @@ export class Game {
     });
   }
 
-  lose() {
+  // After a lost fight (`dance`) the boss celebrates on camera before the lose screen.
+  lose({ dance = false } = {}) {
     this.state = 'lost';
     this.audio.stopMusic();
     this.audio.play('lose');
@@ -832,9 +860,11 @@ export class Game {
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
     this.hud.setKeys(this.save.keys);
-    this.effects.tween(0.8, () => {}, () => this.hud.showLose({
+    const showLose = () => this.hud.showLose({
       coins: this.runCoins, onContinue: () => this.loadLevel(this.level.level),
-    }));
+    });
+    if (dance && this.view.boss) this.later(0.5, () => this.celebrate(this.view.boss, this.bossAnim, danceFor(this.boss.id), showLose));
+    else this.later(0.8, showLose);
   }
 
   // ---- Presentation -------------------------------------------------------------
@@ -871,6 +901,7 @@ export class Game {
   }
 
   cameraFocus() {
+    if (this.spotlight) return this.spotlightShot(this.spotlight);
     const { center } = this.player;
     const r = this.player.radius;
     switch (this.state) {
@@ -910,7 +941,8 @@ export class Game {
       cameraGoal.fromArray(focus.pos);
       lookGoal.fromArray(focus.look);
     }
-    const k = this.snapCamera ? 1 : Math.min(1, dt * (this.state === 'bonus' || this.state === 'chest' ? 7 : 4));
+    const rate = this.spotlight ? CONFIG.victory.zoomRate : this.state === 'bonus' || this.state === 'chest' ? 7 : 4;
+    const k = this.snapCamera ? 1 : Math.min(1, dt * rate);
     this.snapCamera = false;
     camera.position.lerp(cameraGoal, k);
     lookCurrent.lerp(lookGoal, k);

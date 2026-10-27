@@ -146,6 +146,12 @@ export class AnimPlayer extends Animator {
     this.action = null;
   }
 
+  /** A victory dance: the animators' clip when loaded, else the keyframed move; a dance with no clip is only keyframes. */
+  dance({ clip, move }) {
+    if (clip) this.playClip(clip, { loop: true, fallback: move });
+    else this.play(move, { loop: true });
+  }
+
   /** The speed that lands the clip's impact frame on the move's hit time. */
   impactSpeed({ retarget, hits }) {
     const impact = CONFIG.character.clipImpact[retarget];
@@ -219,7 +225,7 @@ export class AnimPlayer extends Animator {
       this.wanted = null;
       const clip = clipLibrary.get(spec, wanted.name);
       if (clip) this.startClip(clip, wanted);
-      else if (wanted.fallback) super.play(wanted.fallback, { hold: wanted.hold });
+      else if (wanted.fallback) super.play(wanted.fallback, { hold: wanted.hold, loop: wanted.loop });
       return;
     }
     if (this.running?.ambient && this.running.name !== ambient) this.stopClip();

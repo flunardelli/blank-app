@@ -7,8 +7,8 @@ import { BOSS_BODY, CHAMPION_BODY } from '../src/art/bodySpecs.js';
 import { gummyMaterial } from '../src/art/models.js';
 import { BOSSES } from '../src/bosses.js';
 import { CONFIG, PALETTE } from '../src/config.js';
-import { BOSS_MOVES, CHAMPION_MOVES, GUARD, KNOCKED_OUT, REACTIONS, idlePose } from '../src/moves.js';
-import { clipDuration } from '../src/anim.js';
+import { BOSS_MOVES, CHAMPION_MOVES, DANCES, GUARD, KNOCKED_OUT, REACTIONS, danceFor, idlePose } from '../src/moves.js';
+import { Animator, clipDuration } from '../src/anim.js';
 import { loadRobotFromDisk } from './support/robot.mjs';
 
 const DT = 1 / 60;
@@ -98,6 +98,41 @@ test('the jelly spring stays finite on long frames and takes the short way round
   second.update(new THREE.Quaternion(), DT);
   second.update(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.2), DT);
   assert.ok(second.velocity.y > 0, 'turns towards the target');
+});
+
+// ---- Victory dances ----
+test('a keyframed dance loops past its length and blends in and out of the guard without a jump', () => {
+  for (const id of ['viking', 'punk', 'king', 'rookie']) {
+    const rig = createBoss(BOSSES.find((b) => b.id === id));
+    const player = new AnimPlayer(GUARD);
+    const before = frame(player, rig, 0.5);
+    const start = before[before.length - 1];
+    player.dance({ clip: null, move: danceFor(id).move });
+    const dancing = frame(player, rig, 3);
+    assert.ok(player.busy, `${id} is still dancing after 3 s`);
+    assert.ok(biggestStep([start, ...dancing]) < 0.5, `${id}: biggest frame step ${biggestStep([start, ...dancing]).toFixed(2)} rad, wrap-around included`);
+    player.play(BOSS_MOVES.jab);
+    const out = frame(player, rig, 0.3);
+    assert.ok(biggestStep([dancing[dancing.length - 1], ...out]) < 0.6, `${id} leaves the dance smoothly`);
+  }
+});
+
+test('a dance with a clip falls back to its looping keyframes while the clip is not loaded', () => {
+  const rig = createChampion(gummyMaterial(), PALETTE.player);
+  const player = new AnimPlayer(GUARD);
+  player.dance(DANCES.champion);
+  frame(player, rig, 2.5);
+  assert.ok(!player.running && player.action?.loop, 'keyframes, looping');
+});
+
+test('the landing reaction squashes and then stretches the body', () => {
+  const anim = new Animator(GUARD);
+  anim.react(REACTIONS.land);
+  const squash = [];
+  for (let i = 0; i < 40; i++) squash.push(anim.update(DT, GUARD).squash);
+  assert.ok(Math.min(...squash) < -0.2, 'flattens');
+  assert.ok(Math.max(...squash) > 0.05, 'springs back taller');
+  assert.ok(Math.abs(squash[squash.length - 1]) < 0.01, 'and settles');
 });
 
 // ---- With the robot's clips ----
@@ -236,4 +271,17 @@ test('driving a new rig with the same player rebinds the mixer and starts from s
   assert.equal(player.mixer.getRoot(), player.driver.root);
   assert.notEqual(player.driver.root, a.body.mesh);
   assert.ok(!player.running);
+});
+
+test('the retargeted Dance and Wave clips loop without a jump at the wrap, and every boss dance blends in from the guard', () => {
+  for (const [id, { clip }] of Object.entries(DANCES)) {
+    if (!clip) continue;
+    const rig = createBoss(BOSSES.find((b) => b.id === id) ?? BOSSES[0]);
+    const player = new AnimPlayer(GUARD);
+    const before = frame(player, rig, 0.5);
+    player.dance(DANCES[id]);
+    const poses = frame(player, rig, 3);
+    assert.equal(player.running?.name, clip);
+    assert.ok(biggestStep([before[before.length - 1], ...poses]) < 0.6, `${id}: ${clip} loops smoothly`);
+  }
 });
