@@ -68,8 +68,11 @@ export const CONFIG = {
     multipliers: [2, 2, 3],
     subMin: 2,
     subMax: 8,
-    badChance: 0.45,
+    badChance: 0.25, // a bad door is a lure: coins wait right behind it (see makeCoinRow)
     maxCount: 999,
+    // Past this size enemy crowds grow with the excess, so crowds stay in the hundreds and gates
+    // keep mattering instead of everything piling up at maxCount.
+    softCap: 300,
   },
   enemy: {
     minShare: 0.12, // enemy crowd size as a share of the best reachable count, on the first level
@@ -180,7 +183,7 @@ export const CONFIG = {
     // (maxDifficulty) along the campaign's pressure curve; kindFactor scales it per level kind.
     // Required taps/s = 3 × difficulty, so the cap stays well under a human's tapping speed.
     minDifficulty: 0.3,
-    maxDifficulty: 1.4,
+    maxDifficulty: 1.0,
     kindFactor: { mini: 0.8, boss: 1, chest: 1 },
     miniScale: 0.8, // mini bosses are a smaller roster boss in the world's colour
     rigScale: 2.6, // a boss rig is modelled for a champion; this is its size in the ring
@@ -302,5 +305,8 @@ export const CONFIG = {
     height: 0.7, // camera and look-at height, per unit of the dancer's scale
   },
   reward: { base: 50, perLevel: 10 },
-  upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
+  upgrades: { baseCost: 150, costGrowth: 1.45, damagePerLevel: 0.25, blobsPerLevel: 1 },
+  // A typical player, used to size bosses for the upgrades they'll realistically own by a level
+  // (economy.js). Better or luckier players stay a little ahead of the curve; nobody breaks it.
+  economy: { coinShare: 0.6, multiplier: 2.4, crowdShare: 0.6 },
 };

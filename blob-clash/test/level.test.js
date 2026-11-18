@@ -229,13 +229,23 @@ test('levels 28–30 are not a copy of levels 4–6', () => {
 });
 
 test('with the best crowd the boss needs a humane tapping speed on every level', () => {
+  // Bosses are sized for the upgrades a typical player owns by then (economy.js), so measure with those.
   for (let n = 1; n <= 30; n++) {
-    const { boss, bestCount } = generateLevel(n);
-    const rate = requiredTapRate(bestCount, boss.hp, 1);
+    const { boss, bestCount, expected } = generateLevel(n);
+    const rate = requiredTapRate(bestCount, boss.hp, expected.damage);
     assert.ok(rate <= HUMAN_TAPS_PER_SECOND, `level ${n}: needs ${rate.toFixed(1)} taps/s`);
   }
   const first = generateLevel(1);
-  assert.ok(requiredTapRate(first.bestCount, first.boss.hp, 1) <= 1.5, 'level 1 is gentle');
+  assert.ok(requiredTapRate(first.bestCount, first.boss.hp, first.expected.damage) <= 1.5, 'level 1 is gentle');
+});
+
+test('a typical player (60% of the best crowd, expected upgrades) needs at most 5 jabs/s', () => {
+  const rates = Array.from({ length: 30 }, (_, i) => {
+    const { boss, bestCount, expected, kind } = generateLevel(i + 1);
+    return kind === 'chest' ? 0 : requiredTapRate(bestCount * 0.6, boss.hp, expected.damage);
+  });
+  rates.forEach((rate, i) => assert.ok(rate <= 5, `level ${i + 1}: ${rate.toFixed(1)} jabs/s`));
+  assert.ok(rates[0] < 2 && Math.max(...rates.slice(24)) > 3, 'gentle start, real fights at the end');
 });
 
 test('worlds 1 and 2 stay winnable by tapping alone, even against a guard', () => {
@@ -243,12 +253,12 @@ test('worlds 1 and 2 stay winnable by tapping alone, even against a guard', () =
   // it is up (everything but the open time after each attack), but not the flying jump punch.
   const { guardMultiplier, guardOpenSeconds, finisherEvery, jumpPunchMultiplier } = CONFIG.boxing;
   for (let n = 1; n <= 6; n++) {
-    const { boss, bestCount } = generateLevel(n);
+    const { boss, bestCount, expected } = generateLevel(n);
     const { attack, mechanics } = bossForLevel(n);
     const guardUp = mechanics.includes('guard') ? Math.max(0, attack.interval - guardOpenSeconds) / attack.interval : 0;
     const jab = guardUp * guardMultiplier + (1 - guardUp);
     const perTap = ((finisherEvery - 1) * jab + jumpPunchMultiplier) / finisherEvery;
-    const rate = requiredTapRate(bestCount, boss.hp, 1) / perTap;
+    const rate = requiredTapRate(bestCount, boss.hp, expected.damage) / perTap;
     assert.ok(rate <= HUMAN_TAPS_PER_SECOND, `level ${n}: needs ${rate.toFixed(1)} taps/s`);
   }
   for (let n = 1; n <= 3; n++) assert.deepEqual(bossForLevel(n).mechanics, [], 'world 1 is plain punches');
@@ -298,4 +308,27 @@ test('sleeping recruits: groups of 1-5 inside the track, without reshuffling the
     assert.ok(groups.every((g) => g.length >= perGroupMin && g.length <= perGroupMax));
   }
   assert.ok(sizes.has(1) && sizes.has(perGroupMax), `group sizes seen: ${[...sizes]}`);
+});
+
+test('upgrades follow a power curve: early levels pay for one or more, later ones come slower', async () => {
+  const { expectedUpgrades } = await import('../src/economy.js');
+  const total = (n) => { const u = expectedUpgrades(n); return u.damage + u.blobs; };
+  assert.deepEqual(expectedUpgrades(1), { damage: 1, blobs: 1 }, 'a new player owns nothing');
+  assert.ok(total(4) - total(1) >= 3, 'the first world buys a few upgrades');
+  assert.ok(total(30) - total(20) < total(10) - total(1), 'later upgrades come slower');
+});
+
+test('crowds stay in the hundreds and gates stay real choices (no near-ties for the tuned crowd)', () => {
+  let pairs = 0;
+  let ties = 0;
+  let goodVsBad = 0;
+  for (let n = 1; n <= 30; n++) {
+    const level = generateLevel(n);
+    assert.ok(level.bestCount < CONFIG.gates.maxCount, `level ${n}: crowd pinned at the cap`);
+    for (const g of level.gates) {
+      pairs += 1;
+      if (isGoodGate(g.left) !== isGoodGate(g.right)) goodVsBad += 1;
+    }
+  }
+  assert.ok(goodVsBad / pairs < 0.3, `${goodVsBad}/${pairs} pairs are an obvious good-vs-bad`);
 });

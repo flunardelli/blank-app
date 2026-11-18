@@ -105,7 +105,7 @@ test('bonus multiplier grows with remaining health, snapped to 0.2 steps, capped
 
 test('rewards, upgrade costs and coin formatting', () => {
   assert.equal(rewardCoins(40, 2, 1.5, { base: 50, perLevel: 10 }), 165);
-  assert.equal(upgradeCost(1), 50);
+  assert.equal(upgradeCost(1, { baseCost: 50, costGrowth: 1.6 }), 50);
   assert.ok(upgradeCost(3) > upgradeCost(2));
   assert.equal(formatCoins(950), '950');
   assert.equal(formatCoins(8190), '8.19K');
