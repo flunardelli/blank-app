@@ -17,6 +17,41 @@ export class Hud {
     this.fight = $('fight');
     this.hpPlayer = $('hp-player');
     this.hpBoss = $('hp-boss');
+    this.pauseButton = $('pause-button');
+    this.settingsButton = $('settings-button');
+    this.pauseScreen = $('pause');
+  }
+
+  // Pause screen doubles as settings: toggles for sound, music and vibration.
+  showPause({ title, settings, onToggle, onResume, onRestart, canRestart }) {
+    $('pause-title').textContent = title;
+    const icons = { sound: '🔊', music: '🎵', vibration: '📳' };
+    $('toggles').replaceChildren(...Object.keys(icons).map((key) => {
+      const button = document.createElement('button');
+      button.className = `toggle${settings[key] ? '' : ' off'}`;
+      button.textContent = icons[key];
+      button.setAttribute('aria-label', key);
+      button.setAttribute('aria-pressed', String(settings[key]));
+      button.onclick = () => {
+        onToggle(key);
+        button.classList.toggle('off', !settings[key]);
+        button.setAttribute('aria-pressed', String(settings[key]));
+      };
+      return button;
+    }));
+    $('pause-resume').onclick = onResume;
+    $('pause-restart').hidden = !canRestart;
+    $('pause-restart').onclick = onRestart;
+    this.pauseScreen.hidden = false;
+  }
+
+  hidePause() {
+    this.pauseScreen.hidden = true;
+  }
+
+  setControls({ pause, settings }) {
+    this.pauseButton.hidden = !pause;
+    this.settingsButton.hidden = !settings;
   }
 
   setLevel(level) {

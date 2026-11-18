@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { CONFIG, PALETTE } from './config.js';
 import {
-  createBoss, createButton, createChampion, createCoin, createFinishLine, createGate, createKey, createLadder,
+  createBoss, createButton, createChampion, createCoinField, createFinishLine, createGate, createKey, createLadder,
   createMelon, createPillar, createRing, createSpikeField, createSpikePad, createSpringGlove, createTrack,
-  gummyMaterial, humanoidGeometry,
+  gummyMaterial, humanoidGeometry, SHARED_GEOMETRIES,
 } from './art/models.js';
 import { bossForLevel } from './bosses.js';
 import { Crowd } from './crowd.js';
@@ -16,8 +16,9 @@ const shared = {
   playerGeometry: humanoidGeometry(PALETTE.player),
   enemyGeometry: humanoidGeometry(PALETTE.enemy),
   playerMaterial: gummyMaterial({ emissive: 0x3a0c00 }),
-  enemyMaterial: gummyMaterial({ opacity: 0.82, emissive: 0x200006 }),
+  enemyMaterial: gummyMaterial({ emissive: 0x200006 }), // opaque: transparent instances sort badly
 };
+SHARED_GEOMETRIES.add(shared.playerGeometry).add(shared.enemyGeometry);
 
 export function createPlayerCrowd(scene) {
   return new Crowd(scene, shared.playerGeometry, shared.playerMaterial, {
@@ -83,11 +84,8 @@ export function buildLevelView(scene, level) {
     return { obstacle, object: place(group, obstacle.d) };
   });
 
-  const coins = new Map(level.coins.map((coin) => {
-    const mesh = place(createCoin(), coin.d, coin.x);
-    mesh.position.y = 0.8;
-    return [coin.id, mesh];
-  }));
+  const coins = createCoinField(level.coins.map((c) => new THREE.Vector3(c.x, 0.8, toZ(c.d))));
+  root.add(coins.mesh);
 
   const enemies = level.enemies.map((enemy) => {
     const crowd = new Crowd(root, shared.enemyGeometry, shared.enemyMaterial, {
@@ -109,6 +107,11 @@ export function buildLevelView(scene, level) {
   boss.root.position.y = 0.25;
   place(ladder.group, level.ladderStart);
 
+  // Shadows only where they read: the actors. Props and scenery would double the draw calls.
+  root.traverse((o) => { o.castShadow = false; });
+  enemies.forEach(({ crowd }) => { crowd.mesh.castShadow = true; });
+  boss.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+
   return {
     root,
     gates,
@@ -122,8 +125,7 @@ export function buildLevelView(scene, level) {
       enemies.forEach(({ crowd }) => crowd.mesh.dispose());
       scene.remove(root);
       root.traverse((object) => {
-        if (!object.isMesh) return;
-        object.geometry.dispose();
+        if (object.isMesh && !SHARED_GEOMETRIES.has(object.geometry)) object.geometry.dispose();
       });
     },
   };

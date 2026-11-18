@@ -3,13 +3,19 @@ import { createWorld } from './world.js';
 import { Hud } from './hud.js';
 import { Input } from './input.js';
 import { Game } from './game.js';
+import { Haptics, Sound } from './audio.js';
 
 // Canvas textures render text with Fredoka, so wait for the font before building the level.
 await document.fonts.load('700 64px Fredoka').catch(() => {});
 
 const canvas = document.getElementById('scene');
 const world = createWorld(canvas);
-const game = new Game({ world, hud: new Hud(), input: new Input(canvas) });
+const sound = new Sound();
+const haptics = new Haptics();
+const game = new Game({ world, hud: new Hud(), input: new Input(canvas), sound, haptics });
+// Audio may only start after a user gesture.
+window.addEventListener('pointerdown', () => sound.unlock(), { capture: true });
+window.addEventListener('keydown', () => sound.unlock(), { capture: true });
 const clock = new THREE.Clock();
 
 world.renderer.setAnimationLoop(() => {

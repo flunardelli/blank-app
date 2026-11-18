@@ -4,6 +4,7 @@ import { CONFIG, PALETTE } from './config.js';
 import { Effects } from './effects.js';
 import { generateLevel } from './level.js';
 import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './levelView.js';
+import { createCoin } from './art/models.js';
 import { bossForLevel } from './bosses.js';
 import {
   applyGate, bonusMultiplier, bossPunchDamage, championStats, chestReward, chooseGate, clashRate, clashStep,
@@ -16,16 +17,21 @@ const UPGRADES = [
   { id: 'blobs', title: 'Blobs', icon: '🫧' },
 ];
 
+// States where the simulation runs and the player can pause.
+const ACTIVE_STATES = new Set(['running', 'skirmish', 'merge', 'boxing']);
+
 const cameraGoal = new THREE.Vector3();
 const lookGoal = new THREE.Vector3();
 const lookCurrent = new THREE.Vector3();
 const bubbleAnchor = new THREE.Vector3();
 
 export class Game {
-  constructor({ world, hud, input }) {
+  constructor({ world, hud, input, sound, haptics }) {
     this.world = world;
     this.hud = hud;
     this.input = input;
+    this.sound = sound;
+    this.haptics = haptics;
     this.save = loadSave();
     this.effects = new Effects(world.scene);
     this.player = createPlayerCrowd(world.scene);
@@ -33,7 +39,20 @@ export class Game {
     world.scene.add(this.champion.root);
     this.time = 0;
     this.view = null;
+    this.paused = false;
+    this.applySettings();
+    hud.pauseButton.onclick = () => this.pause('PAUSED');
+    hud.settingsButton.onclick = () => this.pause('SETTINGS');
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (ACTIVE_STATES.has(this.state)) this.pause('PAUSED');
+        this.sound.suspend();
+      } else {
+        this.sound.resume();
+      }
+    });
     input.onPress(() => {
+      if (this.paused) return;
       if (this.state === 'menu') this.start();
       else if (this.state === 'boxing') this.championPunch();
     });
@@ -91,6 +110,8 @@ export class Game {
     if (this.state !== 'menu' || this.save.coins < cost) return;
     this.save.coins -= cost;
     this.save.upgrades[id] += 1;
+    this.sound.play('buy');
+    this.haptics.pulse(15);
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
     if (id === 'blobs') this.player.setCount(startBlobsFor(this.save.upgrades.blobs));
@@ -101,10 +122,51 @@ export class Game {
     this.state = 'running';
     this.player.mood = 'run';
     this.hud.hideScreens();
+    this.sound.play('tap');
+    this.sound.startMusic();
+  }
+
+  // ---- Pause & settings ------------------------------------------------------------
+  pause(title) {
+    if (this.paused) return;
+    this.paused = true;
+    this.sound.play('tap');
+    this.hud.showPause({
+      title,
+      settings: this.save.settings,
+      canRestart: ACTIVE_STATES.has(this.state),
+      onToggle: (key) => {
+        this.save.settings[key] = !this.save.settings[key];
+        writeSave(this.save);
+        this.applySettings();
+        this.sound.play('tap');
+        if (key === 'vibration') this.haptics.pulse(30);
+      },
+      onResume: () => this.unpause(),
+      onRestart: () => {
+        this.unpause();
+        this.loadLevel(this.level.level);
+      },
+    });
+  }
+
+  unpause() {
+    this.paused = false;
+    this.input.consumeLateral(0, CONFIG.crowd); // drop drags made while paused
+    this.hud.hidePause();
+  }
+
+  applySettings() {
+    const { sound, music, vibration } = this.save.settings;
+    this.sound.setEnabled(sound);
+    this.sound.setMusicEnabled(music);
+    this.haptics.enabled = vibration;
   }
 
   // ---- Frame update -------------------------------------------------------------
   update(dt) {
+    this.hud.setControls({ pause: ACTIVE_STATES.has(this.state) && !this.paused, settings: this.state === 'menu' && !this.paused });
+    if (this.paused) return;
     this.time += dt;
     if (this.state === 'running') this.updateRunning(dt);
     else if (this.state === 'skirmish') this.updateSkirmish(dt);
@@ -141,10 +203,12 @@ export class Game {
     const chosen = chooseGate(gate.pair, this.player.center.x);
     const before = this.player.count;
     const removed = this.player.setCount(applyGate(before, chosen));
+    this.sound.play(this.player.count >= before ? 'gateGood' : 'gateBad');
+    this.haptics.pulse(this.player.count >= before ? 12 : [20, 30, 20]);
     if (this.player.count > before) {
       this.effects.emojis(new THREE.Vector3(this.player.center.x, 3, toZ(this.player.center.d)), 3);
     }
-    removed.forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    this.splash(removed, PALETTE.player.splat);
     const panel = gate.panels[chosen === gate.pair.left ? 0 : 1];
     this.effects.tween(0.35, (k) => {
       panel.glass.material.opacity = 0.5 + Math.sin(k * Math.PI) * 0.4;
@@ -152,11 +216,27 @@ export class Game {
     }, () => { panel.glass.visible = panel.label.visible = false; });
   }
 
+  // Blobs dying: drops + floor splat each, one throttled pop sound and a light buzz.
+  splash(bodies, color) {
+    if (!bodies.length) return;
+    bodies.forEach(({ x, d }) => this.effects.pop(x, toZ(d), color));
+    this.sound.play('pop', { minGap: 0.05 });
+    this.haptics.pulse(8);
+  }
+
   // Coins and the key are collected by any part of the crowd's footprint.
   inReach(x, d, margin = 0.6) {
     const { center } = this.player;
     const reach = this.player.radius + margin;
     return Math.abs(d - center.d) <= reach && Math.abs(x - center.x) <= reach;
+  }
+
+  // Stand-in coin for the collect animation (the field's instance is hidden at once).
+  coinSprite(coin) {
+    const mesh = createCoin();
+    mesh.position.set(coin.x, 0.8, toZ(coin.d));
+    this.effects.root.add(mesh);
+    return mesh;
   }
 
   collectAnimation(mesh) {
@@ -172,13 +252,17 @@ export class Game {
       if (!this.inReach(coin.x, coin.d)) return true;
       this.runCoins += CONFIG.coins.value;
       this.hud.setCoins(this.save.coins + this.runCoins);
-      this.collectAnimation(this.view.coins.get(coin.id));
+      this.view.coins.hide(coin.id);
+      this.collectAnimation(this.coinSprite(coin));
+      this.sound.play('coin', { minGap: 0.04, pitch: (this.coinStreak = (this.coinStreak ?? 0) % 8 + 1) });
       return false;
     });
     const { key } = this.level;
     if (!this.keyTaken && this.inReach(key.x, key.d)) {
       this.keyTaken = true;
       this.collectAnimation(this.view.key);
+      this.sound.play('key');
+      this.haptics.pulse(20);
       this.hud.setKeys(Math.min(CONFIG.keys.perChest, this.save.keys + 1));
     }
   }
@@ -192,6 +276,8 @@ export class Game {
       if (Math.abs(button.d - this.player.center.d) > this.player.radius + 2) continue;
       if (!this.player.units.some((u) => pressesButton(button, u.x, u.d, unitRadius))) continue;
       trap.armed = false;
+      this.sound.play('button');
+      this.haptics.pulse(25);
       trap.button.cap.position.y = 0.12;
       trap.button.cap.material = trap.button.cap.material.clone();
       trap.button.cap.material.color.set(0x8a8a9a);
@@ -216,7 +302,7 @@ export class Game {
     // Bodies we don't draw (count > maxVisible) die with the same share as the visible ones.
     const hidden = player.count - player.units.length;
     const hiddenLosses = Math.round(hidden * (hits.length / player.units.length));
-    player.kill(hits).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    this.splash(player.kill(hits), PALETTE.player.splat);
     player.setCount(player.count - hiddenLosses);
     this.effects.shake = Math.max(this.effects.shake, 0.4);
   }
@@ -227,6 +313,7 @@ export class Game {
     const { player } = this;
     if (player.center.d + player.radius < target.enemy.d - target.crowd.radius) return;
     this.state = 'skirmish';
+    this.sound.play('clash');
     this.skirmish = { target, a: player.count, b: target.crowd.count, rate: clashRate(player.count, target.crowd.count) };
     player.mood = target.crowd.mood = 'fight';
   }
@@ -236,8 +323,8 @@ export class Game {
     const { player } = this;
     const enemy = s.target.crowd;
     [s.a, s.b] = clashStep(s.a, s.b, s.rate, dt);
-    player.setCount(Math.ceil(s.a)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
-    enemy.setCount(Math.ceil(s.b)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.enemy.splat));
+    this.splash(player.setCount(Math.ceil(s.a)), PALETTE.player.splat);
+    this.splash(enemy.setCount(Math.ceil(s.b)), PALETTE.enemy.splat);
     // Both crowds lean into each other.
     const gap = enemy.center.d - player.center.d;
     player.center.d += Math.min(gap * 0.5, CONFIG.crowd.forwardSpeed * 0.25 * dt);
@@ -263,6 +350,7 @@ export class Game {
   startMerge() {
     const { player, champion } = this;
     this.state = 'merge';
+    this.sound.play('whoosh');
     const stats = championStats(player.count, this.save.upgrades.damage);
     this.fight = {
       ...stats, maxHp: stats.hp, bossHp: this.level.boss.hp, bossMaxHp: this.level.boss.hp,
@@ -313,6 +401,8 @@ export class Game {
     const glove = this.champion.gloves[f.nextGlove];
     f.nextGlove = 1 - f.nextGlove;
     glove.userData.punch = 1;
+    this.sound.play('jab');
+    this.haptics.pulse(10);
     this.hitBoss(f.punch * step.multiplier, { stars: 2, scale: 0.7 });
   }
 
@@ -323,6 +413,8 @@ export class Game {
     const spot = this.championSpot();
     f.jumping = true;
     this.hud.popText('JUMP PUNCH!');
+    this.sound.play('jumpPunch');
+    this.haptics.pulse(30);
     let landed = false;
     this.effects.tween(0.55, (k) => {
       const out = Math.sin(Math.min(k / 0.5, 1) * Math.PI / 2) * (1 - Math.max(0, k - 0.5) * 2);
@@ -383,6 +475,8 @@ export class Game {
     f.nextBossArm = 1 - f.nextBossArm;
     arm.userData.strike = 1;
     f.hp = Math.max(0, f.hp - damage);
+    this.sound.play('hurt');
+    this.haptics.pulse(40);
     f.flinch = 1;
     const at = this.champion.root.position.clone().setY(1.6 * this.championScale / 2 + 0.6);
     this.effects.impact(at, { stars: Math.round(3 * weight), scale: 0.8 * weight });
@@ -399,6 +493,7 @@ export class Game {
     this.effects.tween(0.45, (k) => { boss.position.y = baseY + Math.sin(k * Math.PI) * 2.2; }, () => {
       boss.position.y = baseY;
       this.effects.dustRing(boss.position.clone().setY(0.5), 3);
+      this.sound.play('slam');
       this.effects.shake = 1;
       this.bossStrike(damage, 1.4);
     });
@@ -407,6 +502,8 @@ export class Game {
   knockOut() {
     this.hud.showFight(false);
     this.hud.popText('K.O.!');
+    this.sound.play('ko');
+    this.haptics.pulse([30, 40, 80]);
     this.startBonus(this.fight.hp / this.fight.maxHp);
   }
 
@@ -438,8 +535,10 @@ export class Game {
     }, () => {
       boss.rotation.x = -Math.PI / 2; // KO: flat on its back
       boss.position.y = 0.6;
-      tile.tile.material.color.set(0x7cf05a);
+      this.view.ladder.highlightTile(tile);
       this.effects.splat(to.x, to.z, this.boss.colors.top, 7, 0.08);
+      this.sound.play('land');
+      this.haptics.pulse(50);
       this.effects.burst(new THREE.Vector3(to.x, 1, to.z), this.boss.colors.top, { count: 30, speed: 9, size: 0.3 });
       this.effects.shake = 1;
       this.effects.tween(0.9, () => {}, () => this.complete());
@@ -448,6 +547,7 @@ export class Game {
 
   complete() {
     this.state = 'complete';
+    this.sound.play('win');
     const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
     let chest = 0;
     if (this.keyTaken) this.save.keys += 1;
@@ -468,7 +568,9 @@ export class Game {
 
   lose() {
     this.state = 'lost';
-    this.player.setCount(0).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.splat));
+    this.sound.play('lose');
+    this.haptics.pulse([60, 40, 60]);
+    this.splash(this.player.setCount(0), PALETTE.player.splat);
     this.save.coins += this.runCoins; // keys only count on a win
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
@@ -492,7 +594,7 @@ export class Game {
         object.rotation.z = Math.sign(obstacle.edgeX) * (inset / obstacle.reach) * 0.6;
       }
     }
-    for (const mesh of this.view.coins.values()) mesh.rotation.y += dt * 3;
+    this.view.coins.update(this.time);
     this.view.key.rotation.y += dt * 2;
     this.animateBoxers(dt);
   }

@@ -2,31 +2,134 @@
 import * as THREE from 'three';
 import { emojiTexture, puffTexture, splatTextures, starTexture } from './art/textures.js';
 
-const dropGeometry = new THREE.SphereGeometry(1, 10, 8);
+const dropGeometry = new THREE.SphereGeometry(1, 6, 4); // tiny on screen: low poly is invisible
 const splatGeometry = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-const MAX_SPLATS = 90;
+const MAX_DROPS = 400;
+const SPLATS_PER_VARIANT = 40;
+const matrix = new THREE.Matrix4();
+const quaternion = new THREE.Quaternion();
+const scaleVector = new THREE.Vector3();
+const tint = new THREE.Color();
+const UP = new THREE.Vector3(0, 1, 0);
+
+// Juice drops: one InstancedMesh for every drop on screen, recycled as a ring buffer.
+// (One mesh per drop meant hundreds of new meshes in a single big clash.)
+class DropPool {
+  constructor(parent) {
+    this.mesh = new THREE.InstancedMesh(dropGeometry, new THREE.MeshStandardMaterial({ roughness: 0.3 }), MAX_DROPS);
+    this.mesh.frustumCulled = false;
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.setColorAt(0, tint.set(0xffffff));
+    parent.add(this.mesh);
+    this.pos = new Float32Array(MAX_DROPS * 3);
+    this.vel = new Float32Array(MAX_DROPS * 3);
+    this.size = new Float32Array(MAX_DROPS);
+    this.life = new Float32Array(MAX_DROPS);
+    this.next = 0;
+  }
+
+  spawn(position, color, velocity, size) {
+    const i = this.next;
+    this.next = (this.next + 1) % MAX_DROPS;
+    position.toArray(this.pos, i * 3);
+    velocity.toArray(this.vel, i * 3);
+    this.size[i] = size;
+    this.life[i] = 0.8;
+    this.mesh.setColorAt(i, tint.set(color));
+    this.mesh.instanceColor.needsUpdate = true;
+  }
+
+  update(dt) {
+    const { pos, vel, size, life } = this;
+    for (let i = 0; i < MAX_DROPS; i++) {
+      if (life[i] <= 0) {
+        if (size[i] !== 0) { // hide once, then skip
+          size[i] = 0;
+          this.mesh.setMatrixAt(i, matrix.makeScale(0, 0, 0));
+        }
+        continue;
+      }
+      life[i] -= dt;
+      const p = i * 3;
+      vel[p + 1] -= 20 * dt;
+      pos[p] += vel[p] * dt;
+      pos[p + 1] += vel[p + 1] * dt;
+      pos[p + 2] += vel[p + 2] * dt;
+      if (pos[p + 1] < 0.05) {
+        pos[p + 1] = 0.05;
+        vel[p] *= 0.5; vel[p + 1] *= -0.3; vel[p + 2] *= 0.5;
+      }
+      size[i] *= 1 - dt * 1.5;
+      matrix.makeScale(size[i], size[i], size[i]).setPosition(pos[p], pos[p + 1], pos[p + 2]);
+      this.mesh.setMatrixAt(i, matrix);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  clear() {
+    this.life.fill(0);
+    this.size.fill(1); // forces one hide pass
+  }
+}
+
+// Paint splats on the floor: three InstancedMeshes (one per splat shape), oldest recycled first.
+class SplatPool {
+  constructor(parent) {
+    this.variants = splatTextures().map((map) => {
+      const mesh = new THREE.InstancedMesh(splatGeometry, new THREE.MeshStandardMaterial({
+        map, transparent: true, depthWrite: false, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -2,
+      }), SPLATS_PER_VARIANT);
+      mesh.frustumCulled = false;
+      mesh.receiveShadow = true;
+      mesh.setColorAt(0, tint.set(0xffffff));
+      parent.add(mesh);
+      return { mesh, next: 0, growing: [] };
+    });
+    this.clear();
+  }
+
+  spawn(x, y, z, color, size) {
+    const variant = this.variants[Math.floor(Math.random() * this.variants.length)];
+    const i = variant.next;
+    variant.next = (variant.next + 1) % SPLATS_PER_VARIANT;
+    variant.mesh.setColorAt(i, tint.set(color));
+    variant.mesh.instanceColor.needsUpdate = true;
+    variant.growing.push({ i, x, y, z, size, t: 0, angle: Math.random() * Math.PI * 2 });
+  }
+
+  update(dt) {
+    for (const variant of this.variants) {
+      if (!variant.growing.length) continue;
+      variant.growing = variant.growing.filter((s) => {
+        s.t = Math.min(1, s.t + dt * 8);
+        quaternion.setFromAxisAngle(UP, s.angle);
+        scaleVector.setScalar(s.size * (0.4 + 0.6 * s.t));
+        variant.mesh.setMatrixAt(s.i, matrix.compose(new THREE.Vector3(s.x, s.y, s.z), quaternion, scaleVector));
+        return s.t < 1;
+      });
+      variant.mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  clear() {
+    for (const variant of this.variants) {
+      for (let i = 0; i < SPLATS_PER_VARIANT; i++) variant.mesh.setMatrixAt(i, matrix.makeScale(0, 0, 0));
+      variant.mesh.instanceMatrix.needsUpdate = true;
+      variant.growing = [];
+      variant.next = 0;
+    }
+  }
+}
 
 export class Effects {
   constructor(scene) {
-    this.root = new THREE.Group();
-    scene.add(this.root);
+    this.root = new THREE.Group(); // per-level transient objects, cleared between levels
+    const pools = new THREE.Group(); // persistent instanced pools
+    scene.add(this.root, pools);
+    this.drops = new DropPool(pools);
+    this.splats = new SplatPool(pools);
     this.active = [];
-    this.splats = [];
-    this.materials = new Map();
     this.shake = 0;
-  }
-
-  material(color, kind) {
-    const key = `${kind}:${color}`;
-    if (!this.materials.has(key)) {
-      this.materials.set(key, kind === 'drop'
-        ? new THREE.MeshPhysicalMaterial({ color, roughness: 0.3, clearcoat: 1 })
-        : splatTextures().map((map) => new THREE.MeshStandardMaterial({
-          color, map, transparent: true, depthWrite: false, roughness: 0.4,
-          polygonOffset: true, polygonOffsetFactor: -2,
-        })));
-    }
-    return this.materials.get(key);
   }
 
   add(effect) {
@@ -38,57 +141,29 @@ export class Effects {
     const running = this.active;
     this.active = [];
     this.active = running.filter((effect) => effect(dt)).concat(this.active);
+    this.drops.update(dt);
+    this.splats.update(dt);
     this.shake = Math.max(0, this.shake - dt * 2.5);
   }
 
   clear() {
     this.root.clear();
     this.active = [];
-    this.splats = [];
+    this.drops.clear();
+    this.splats.clear();
     this.shake = 0;
   }
 
-  // Paint splat decal on the floor; the oldest one is recycled past MAX_SPLATS.
   splat(x, z, color, size = 1.6, y = 0.02) {
-    const materials = this.material(color, 'splat');
-    const mesh = this.splats.length >= MAX_SPLATS ? this.splats.shift() : new THREE.Mesh(splatGeometry);
-    mesh.material = materials[Math.floor(Math.random() * materials.length)];
-    mesh.position.set(x, y + Math.random() * 0.005, z);
-    mesh.rotation.y = Math.random() * Math.PI * 2;
-    mesh.receiveShadow = true;
-    this.root.add(mesh);
-    this.splats.push(mesh);
-    let t = 0;
-    this.add((dt) => {
-      t = Math.min(1, t + dt * 8);
-      mesh.scale.setScalar(size * (0.4 + 0.6 * t));
-      return t < 1;
-    });
+    this.splats.spawn(x, y + Math.random() * 0.005, z, color, size);
   }
 
   burst(position, color, { count = 10, speed = 6, size = 0.16 } = {}) {
-    const material = this.material(color, 'drop');
+    const velocity = new THREE.Vector3();
     for (let i = 0; i < count; i++) {
-      const drop = new THREE.Mesh(dropGeometry, material);
-      drop.position.copy(position);
-      drop.scale.setScalar(size * (0.6 + Math.random() * 0.8));
-      const velocity = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8 + 0.5, Math.random() - 0.5)
+      velocity.set(Math.random() - 0.5, Math.random() * 0.8 + 0.5, Math.random() - 0.5)
         .normalize().multiplyScalar(speed * (0.5 + Math.random()));
-      this.root.add(drop);
-      let life = 0.8;
-      this.add((dt) => {
-        life -= dt;
-        velocity.y -= 20 * dt;
-        drop.position.addScaledVector(velocity, dt);
-        if (drop.position.y < 0.05) {
-          drop.position.y = 0.05;
-          velocity.multiplyScalar(0.5);
-        }
-        drop.scale.multiplyScalar(1 - dt * 1.5);
-        if (life > 0) return true;
-        this.root.remove(drop);
-        return false;
-      });
+      this.drops.spawn(position, color, velocity, size * (0.6 + Math.random() * 0.8));
     }
   }
 

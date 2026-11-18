@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG, PALETTE } from '../config.js';
-import { checkerTexture, coinFaceTexture, melonFaceTexture, stripeTexture, textTexture } from './textures.js';
+import { FONT_FAMILY, checkerTexture, coinFaceTexture, melonFaceTexture, stripeTexture, textTexture } from './textures.js';
 import { gateLabel, isGoodGate } from '../rules.js';
 
 // ---- Materials ----------------------------------------------------------------
@@ -13,8 +13,6 @@ export function gummyMaterial({ opacity = 1, emissive = 0x000000 } = {}) {
     roughness: 0.3,
     clearcoat: 1,
     clearcoatRoughness: 0.12,
-    sheen: 0.5,
-    sheenColor: new THREE.Color(0xffe0c0),
     emissive,
     transparent: opacity < 1,
     opacity,
@@ -22,6 +20,43 @@ export function gummyMaterial({ opacity = 1, emissive = 0x000000 } = {}) {
 }
 
 const glossy = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.35, ...extra });
+
+// Geometries reused across levels: a level's dispose() must leave these alone.
+export const SHARED_GEOMETRIES = new Set();
+
+/**
+ * Bakes a static group's meshes into one mesh per material: same picture, far fewer draw calls
+ * (a spike pad goes from ~20 meshes to 2). Meshes flagged `userData.dynamic`, multi-material
+ * meshes and children of dynamic parents are left alone.
+ */
+export function bakeStatic(group) {
+  group.updateMatrixWorld(true);
+  const toGroup = group.matrixWorld.clone().invert();
+  const buckets = new Map();
+  const merged = [];
+  group.traverse((o) => {
+    if (!o.isMesh || Array.isArray(o.material) || o.userData.dynamic || o.parent?.userData.dynamic) return;
+    let geometry = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    geometry.applyMatrix4(toGroup.clone().multiply(o.matrixWorld));
+    for (const name of Object.keys(geometry.attributes)) {
+      if (!['position', 'normal', 'uv', 'color'].includes(name)) geometry.deleteAttribute(name);
+    }
+    const key = o.material.uuid + (geometry.attributes.color ? ':c' : '');
+    if (!buckets.has(key)) buckets.set(key, { material: o.material, geometries: [], castShadow: false, receiveShadow: false });
+    const bucket = buckets.get(key);
+    bucket.geometries.push(geometry);
+    bucket.castShadow ||= o.castShadow;
+    bucket.receiveShadow ||= o.receiveShadow;
+    merged.push(o);
+  });
+  merged.forEach((o) => o.removeFromParent());
+  for (const { material, geometries, castShadow, receiveShadow } of buckets.values()) {
+    const mesh = new THREE.Mesh(mergeGeometries(geometries), material);
+    Object.assign(mesh, { castShadow, receiveShadow });
+    group.add(mesh);
+  }
+  return group;
+}
 
 // Vertical colour gradient baked into vertex colours (bottom -> top), like the jelly in the reference.
 function paintGradient(geometry, bottom, top, y0, y1) {
@@ -37,15 +72,15 @@ function paintGradient(geometry, bottom, top, y0, y1) {
 }
 
 // ---- Gummy humanoid (one merged geometry, instanced for the whole crowd) --------
-function beanGeometry(segments = 16) {
+function beanGeometry(segments = 14, detail = 14) {
   // Chubby jelly-bean: wide hips, round head, no neck.
   const outline = [[0, 0.26], [0.3, 0.29], [0.46, 0.42], [0.52, 0.64], [0.5, 0.9], [0.44, 1.1],
     [0.34, 1.26], [0.2, 1.36], [0, 1.39]].map(([x, y]) => new THREE.Vector2(x, y));
-  return new THREE.LatheGeometry(new THREE.SplineCurve(outline).getPoints(20), segments);
+  return new THREE.LatheGeometry(new THREE.SplineCurve(outline).getPoints(detail), segments);
 }
 
 function limb(radius, length, x, y, tilt) {
-  return new THREE.CapsuleGeometry(radius, length, 4, 8).rotateZ(tilt).translate(x, y, 0);
+  return new THREE.CapsuleGeometry(radius, length, 3, 7).rotateZ(tilt).translate(x, y, 0);
 }
 
 export function humanoidGeometry({ bottom, top }) {
@@ -182,7 +217,7 @@ export function createBoss({ colors, glove: gloveColor, headgear, body: [width, 
   const material = gummyMaterial();
 
   const torso = new THREE.Mesh(paintGradient(mergeGeometries([
-    beanGeometry(28).scale(1, 1.05, 0.85),
+    beanGeometry(28, 24).scale(1, 1.05, 0.85), // the boss is big on screen: keep it smooth
     limb(0.15, 0.3, -0.2, 0.2, 0),
     limb(0.15, 0.3, 0.2, 0.2, 0),
   ]), colors.bottom, colors.top, 0.1, 1.6), material);
@@ -278,6 +313,7 @@ export function createSpikePad(halfWidth, halfDepth) {
   group.add(base);
   const spikeGeometry = new THREE.ConeGeometry(0.22, 1.1, 10);
   const spikeMaterial = glossy(PALETTE.spike, { roughness: 0.2 });
+  spikeMaterial.userData.role = 'spike';
   for (let x = -halfWidth + 0.4; x <= halfWidth - 0.3; x += 0.75) {
     for (let z = -halfDepth + 0.4; z <= halfDepth - 0.3; z += 0.75) {
       const spike = new THREE.Mesh(spikeGeometry, spikeMaterial);
@@ -286,7 +322,7 @@ export function createSpikePad(halfWidth, halfDepth) {
       group.add(spike);
     }
   }
-  return group;
+  return bakeStatic(group);
 }
 
 export function createButton(radius) {
@@ -306,9 +342,8 @@ export function createButton(radius) {
 export function createSpikeField(halfDepth) {
   const half = CONFIG.track.width / 2;
   const group = createSpikePad(half, halfDepth);
-  const spikes = new THREE.Group();
-  [...group.children].slice(1).forEach((spike) => spikes.add(spike));
-  group.add(spikes);
+  // The pad bakes base and spikes into one mesh per material; the spike mesh is the one to lower.
+  const spikes = group.children.find((mesh) => mesh.material.userData.role === 'spike');
   return { group, spikes };
 }
 
@@ -329,11 +364,35 @@ export function createKey() {
 }
 
 const coinGeometry = new THREE.CylinderGeometry(0.42, 0.42, 0.1, 28).rotateX(Math.PI / 2);
-export function createCoin() {
+SHARED_GEOMETRIES.add(coinGeometry);
+const coinMaterials = () => {
   const face = new THREE.MeshStandardMaterial({ map: coinFaceTexture(), metalness: 0.3, roughness: 0.3 });
-  const coin = new THREE.Mesh(coinGeometry, [glossy(0xe0a000, { metalness: 0.4 }), face, face]);
+  return [glossy(0xe0a000, { metalness: 0.4 }), face, face];
+};
+
+export function createCoin() {
+  const coin = new THREE.Mesh(coinGeometry, coinMaterials());
   coin.castShadow = true;
   return coin;
+}
+
+/** All of a level's coins as one InstancedMesh (3 draw calls instead of 3 per coin). */
+export function createCoinField(positions) {
+  const mesh = new THREE.InstancedMesh(coinGeometry, coinMaterials(), positions.length);
+  const matrix = new THREE.Matrix4();
+  const rotation = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const one = new THREE.Vector3(1, 1, 1);
+  const zero = new THREE.Vector3(0, 0, 0);
+  const visible = positions.map(() => true);
+  mesh.castShadow = true;
+  const update = (time) => {
+    rotation.setFromAxisAngle(up, time * 3);
+    positions.forEach((p, i) => mesh.setMatrixAt(i, matrix.compose(p, rotation, visible[i] ? one : zero)));
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  update(0);
+  return { mesh, update, hide: (i) => { visible[i] = false; } };
 }
 
 // ---- Track pieces ---------------------------------------------------------------
@@ -364,7 +423,7 @@ export function createTrack(fromD, toD) {
     rail.receiveShadow = rail.castShadow = true;
     group.add(rail);
   }
-  return group;
+  return bakeStatic(group);
 }
 
 export function createGate(pair) {
@@ -387,13 +446,15 @@ export function createGate(pair) {
       }),
     );
     glass.position.set(x, 1.5, 0);
+    glass.userData.dynamic = true; // flashes and hides when crossed
     const label = textPlane(gateLabel(gate), 2.3);
+    label.userData.dynamic = true;
     label.position.set(x, 1.7, 0.2);
     label.renderOrder = 2;
     group.add(glass, label);
     return { glass, label };
   });
-  return { group, panels };
+  return { group: bakeStatic(group), panels };
 }
 
 export function createFinishLine() {
@@ -459,26 +520,61 @@ export function createRing(depth) {
   );
   door.position.set(0, 3.4, archZ);
   group.add(beam, door);
-  return group;
+  return bakeStatic(group);
 }
 
-// Bonus ladder: tiles x1.0 … x5.0 where the knocked-out boss lands.
+// Bonus ladder: tiles x1.0 … x5.0 where the knocked-out boss lands. Drawn as two meshes
+// (tiles with vertex colours + one label strip) plus a highlight that marks the landing tile.
 export function createLadder() {
   const { maxMultiplier, step, tileDepth } = CONFIG.bonus;
+  const { width } = CONFIG.track;
   const group = new THREE.Group();
-  const tiles = [];
   const steps = Math.round((maxMultiplier - 1) / step);
-  for (let i = 0; i <= steps; i++) {
+  const count = steps + 1;
+  const tiles = [];
+  const tileGeometries = [];
+  for (let i = 0; i < count; i++) {
     const multiplier = Math.round((1 + i * step) * 10) / 10;
-    const material = new THREE.MeshStandardMaterial({ color: i % 2 ? 0xdff0ff : 0xffffff, roughness: 0.8 });
-    const tile = new THREE.Mesh(new THREE.BoxGeometry(CONFIG.track.width, 0.1, tileDepth), material);
-    tile.position.set(0, 0.02, -(i + 0.5) * tileDepth);
-    tile.receiveShadow = true;
-    const label = textPlane(`x${multiplier.toFixed(1)}`, 1.3);
-    label.rotation.x = -Math.PI / 2;
-    label.position.set(0, 0.1, tile.position.z);
-    group.add(tile, label);
-    tiles.push({ multiplier, tile, d: (i + 0.5) * tileDepth });
+    const g = new THREE.BoxGeometry(width, 0.1, tileDepth).translate(0, 0.02, -(i + 0.5) * tileDepth);
+    tileGeometries.push(paintGradient(g, i % 2 ? 0xdff0ff : 0xffffff, i % 2 ? 0xdff0ff : 0xffffff, 0, 1));
+    tiles.push({ multiplier, d: (i + 0.5) * tileDepth });
   }
-  return { group, tiles, length: (steps + 1) * tileDepth };
+  const floor = new THREE.Mesh(mergeGeometries(tileGeometries), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }));
+  floor.receiveShadow = true;
+
+  // One canvas holds every label, so the whole strip is a single textured plane.
+  const pxPerTile = 96;
+  const canvas = Object.assign(document.createElement('canvas'), { width: 256, height: pxPerTile * count });
+  const ctx = canvas.getContext('2d');
+  ctx.font = `700 ${pxPerTile * 0.62}px ${FONT_FAMILY}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = pxPerTile * 0.1;
+  tiles.forEach((tile, i) => {
+    const y = canvas.height - (i + 0.5) * pxPerTile; // tile 0 nearest the ring = bottom of the strip
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.strokeText(`x${tile.multiplier.toFixed(1)}`, 128, y);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`x${tile.multiplier.toFixed(1)}`, 128, y);
+  });
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  const length = count * tileDepth;
+  const labels = new THREE.Mesh(
+    new THREE.PlaneGeometry(width * 0.4, length).rotateX(-Math.PI / 2).translate(0, 0.09, -length / 2),
+    new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false, fog: false }),
+  );
+  const highlight = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, tileDepth).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0x7cf05a, transparent: true, opacity: 0.85 }),
+  );
+  highlight.visible = false;
+  group.add(floor, labels, highlight);
+  const highlightTile = (tile) => {
+    highlight.position.set(0, 0.075, -tile.d);
+    highlight.visible = true;
+  };
+  return { group, tiles, length, highlightTile };
 }
