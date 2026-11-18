@@ -11,7 +11,7 @@ export function loadSave() {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY));
     return {
-      ...DEFAULTS, ...saved,
+      ...structuredClone(DEFAULTS), ...saved, // clone: never hand out (and mutate) the defaults' arrays
       upgrades: { ...DEFAULTS.upgrades, ...saved?.upgrades },
       settings: { ...DEFAULTS.settings, ...saved?.settings },
     };

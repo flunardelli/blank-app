@@ -1,5 +1,6 @@
-// Offline support: the app shell is precached; everything else is served stale-while-revalidate,
-// so the game opens instantly (and offline) and picks up a new deploy on the next launch.
+// Offline support. Network first, cache as the fallback: the game is a graph of ES modules, and
+// serving some of them from an older deploy than others would break it, so the cache is only
+// for when the network is gone.
 const CACHE = 'blob-clash-v1';
 const SHELL = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
@@ -21,11 +22,12 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
   event.respondWith(caches.open(CACHE).then(async (cache) => {
-    const cached = await cache.match(request, { ignoreSearch: true });
-    const network = fetch(request).then((response) => {
+    try {
+      const response = await fetch(request);
       if (response.ok) cache.put(request, response.clone());
       return response;
-    }).catch(() => cached);
-    return cached ?? network;
+    } catch {
+      return (await cache.match(request, { ignoreSearch: true })) ?? Response.error();
+    }
   }));
 });
