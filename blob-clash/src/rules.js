@@ -11,8 +11,17 @@ const GATE_OPS = {
   '/': { apply: (c, v) => Math.floor(c / v), symbol: '÷', good: false },
 };
 
-export function applyGate(count, { op, value }, maxCount = CONFIG.gates.maxCount) {
-  return clamp(Math.round(GATE_OPS[op].apply(count, value)), 0, maxCount);
+// A gate may carry a `cost`: a numbered wall that eats that many blobs before the gate applies.
+export function applyGate(count, { op, value, cost = 0 }, maxCount = CONFIG.gates.maxCount) {
+  const survivors = Math.max(0, count - cost);
+  return clamp(Math.round(GATE_OPS[op].apply(survivors, value)), 0, maxCount);
+}
+
+/** Relative difference between a pair's outcomes: below ~0.15 the choice doesn't matter. */
+export function gateGap(count, pair) {
+  const a = applyGate(count, pair.left);
+  const b = applyGate(count, pair.right);
+  return Math.abs(a - b) / Math.max(a, b, 1);
 }
 
 export const gateLabel = ({ op, value }) => `${GATE_OPS[op].symbol}${value}`;
@@ -82,6 +91,12 @@ export function clashStep(a, b, rate, dt) {
   return [a - loss, b - loss];
 }
 
+// ---- Narrow bridge -------------------------------------------------------------
+export const bridgeAt = (bridges, d) => bridges.find((b) => d >= b.d0 && d <= b.d1) ?? null;
+
+/** A body falls off when it is mostly past the bridge edge. */
+export const fallsOffBridge = (bridge, x, r) => Math.abs(x) - r * 0.5 > bridge.halfWidth;
+
 export function pressesButton(button, x, d, r) {
   return circlesOverlap(x, d, r, button.x, button.d, button.radius);
 }
@@ -124,9 +139,16 @@ export function requiredTapRate(count, bossHp, damageLevel, cfg = CONFIG.boxing)
   return bossHp / (punch * cfg.bossKillSeconds);
 }
 
-export function bossDifficulty(level, { baseDifficulty, difficultyPerLevel, maxDifficulty } = CONFIG.boss) {
-  return Math.min(maxDifficulty, baseDifficulty + difficultyPerLevel * (level - 1));
+// Sawtooth: a steady climb, a spike on every `bossEvery`-th level and a breather right after.
+export function bossDifficulty(level, cfg = CONFIG.boss) {
+  const { baseDifficulty, difficultyPerLevel, maxDifficulty, bossEvery, spike, relief } = cfg;
+  const trend = Math.min(maxDifficulty, baseDifficulty + difficultyPerLevel * (level - 1));
+  if (level % bossEvery === 0) return trend + spike;
+  if (level > 1 && level % bossEvery === 1) return trend - relief;
+  return trend;
 }
+
+export const isBigBossLevel = (level, { bossEvery } = CONFIG.boss) => level % bossEvery === 0;
 
 // ---- Rewards & progression -----------------------------------------------------
 // The champion's remaining health decides how far the boss flies down the x1.0 … x5.0 ladder.

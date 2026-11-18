@@ -3,7 +3,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG, PALETTE } from '../config.js';
-import { FONT_FAMILY, checkerTexture, coinFaceTexture, melonFaceTexture, stripeTexture, textTexture } from './textures.js';
+import {
+  FONT_FAMILY, brickTexture, checkerTexture, coinFaceTexture, melonFaceTexture, plankTexture, stripeTexture, textTexture,
+} from './textures.js';
 import { gateLabel, isGoodGate } from '../rules.js';
 
 // ---- Materials ----------------------------------------------------------------
@@ -407,22 +409,23 @@ export function textPlane(text, height, options) {
   return new THREE.Mesh(new THREE.PlaneGeometry(height * texture.userData.aspect, height), material);
 }
 
-export function createTrack(fromD, toD) {
-  const { width } = CONFIG.track;
+/** A straight piece of track. A narrow `width` makes a wooden bridge over the water. */
+export function createTrack(fromD, toD, width = CONFIG.track.width) {
   const length = toD - fromD;
-  const texture = stripeTexture().clone();
-  texture.repeat.set(1, length / 5);
+  const bridge = width < CONFIG.track.width;
+  const texture = (bridge ? plankTexture() : stripeTexture()).clone();
+  texture.repeat.set(bridge ? width / 2 : 1, length / (bridge ? 2.5 : 5));
   texture.needsUpdate = true;
   const group = new THREE.Group();
   const top = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.85 });
-  const side = new THREE.MeshStandardMaterial({ color: 0xd9d2f2, roughness: 0.8 });
+  const side = new THREE.MeshStandardMaterial({ color: bridge ? 0xb07a45 : 0xd9d2f2, roughness: 0.8 });
   const deck = new THREE.Mesh(new THREE.BoxGeometry(width, 1.2, length), [side, side, top, side, side, side]);
   deck.position.set(0, -0.6, -(fromD + length / 2));
   deck.receiveShadow = true;
   group.add(deck);
 
   const railMaterial = glossy(PALETTE.rail);
-  for (const x of [-width / 2 - 0.2, width / 2 + 0.2]) {
+  if (!bridge) for (const x of [-width / 2 - 0.2, width / 2 + 0.2]) {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, length), railMaterial);
     rail.position.set(x, 0.05, deck.position.z);
     rail.receiveShadow = rail.castShadow = true;
@@ -443,6 +446,7 @@ export function createGate(pair) {
     group.add(post);
   }
   const panels = [[pair.left, -half / 2], [pair.right, half / 2]].map(([gate, x]) => {
+    if (gate.cost) return createWallPanel(gate, x, half, group);
     const color = isGoodGate(gate) ? PALETTE.goodGlass : PALETTE.badGlass;
     const glass = new THREE.Mesh(
       new THREE.BoxGeometry(half - 0.3, 2.8, 0.12),
@@ -460,6 +464,28 @@ export function createGate(pair) {
     return { glass, label };
   });
   return { group: bakeStatic(group), panels };
+}
+
+// Numbered brick wall in one half of a gate: smash it (losing `cost` blobs) to reach its gate.
+function createWallPanel(gate, x, half, group) {
+  const texture = brickTexture().clone();
+  texture.repeat.set(2, 1.5);
+  texture.needsUpdate = true;
+  const glass = new THREE.Mesh(
+    new THREE.BoxGeometry(half - 0.3, 2.8, 0.6),
+    new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9 }),
+  );
+  glass.position.set(x, 1.4, 0);
+  glass.userData.dynamic = true;
+  const cost = textPlane(`-${gate.cost}`, 1.5, { fill: '#ffdddd' });
+  cost.position.set(x, 1.3, 0.32);
+  const reward = textPlane(gateLabel(gate), 1.7, { fill: '#ffe14a' });
+  reward.position.set(x, 3.6, 0);
+  const label = new THREE.Group();
+  label.add(cost, reward);
+  label.userData.dynamic = true;
+  group.add(glass, label);
+  return { glass, label, wall: true };
 }
 
 export function createFinishLine() {

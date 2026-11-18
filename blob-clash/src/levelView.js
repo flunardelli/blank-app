@@ -53,8 +53,14 @@ export function buildLevelView(scene, level) {
   };
 
   const ladder = createLadder();
+  // Full-width track, interrupted by narrow wooden bridges over the water.
   const trackEnd = level.ladderStart + ladder.length + 6;
-  root.add(createTrack(-12, trackEnd));
+  let from = -12;
+  for (const bridge of level.bridges) {
+    root.add(createTrack(from, bridge.d0), createTrack(bridge.d0, bridge.d1, bridge.halfWidth * 2));
+    from = bridge.d1;
+  }
+  root.add(createTrack(from, trackEnd));
 
   const gates = level.gates.map((pair) => {
     const gate = createGate(pair);

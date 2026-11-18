@@ -5,6 +5,30 @@ import { formatCoins } from './rules.js';
 const projected = new THREE.Vector3();
 const $ = (id) => document.getElementById(id);
 
+// First-time coaching, one short line per mechanic (shown once, when it first appears).
+const HINTS = {
+  gate: 'Drag into the BIGGER gate!',
+  enemy: 'Bigger crowd wins the clash!',
+  slider: 'Slip past when it pulls back!',
+  spikes: 'Steer around the spikes!',
+  trap: 'Step on the GREEN BUTTON!',
+  wall: 'Smash the wall? It costs blobs!',
+  gateRisk: 'Bigger gate, bigger danger!',
+  bridge: 'Stay in the middle!',
+};
+
+// Why the run ended, and what to do about it.
+const LOSE_TIPS = {
+  trap: 'Step on the green button to lower the spikes.',
+  spikes: 'Steer around the spike pads.',
+  slider: 'Pass when the slider pulls back to its side.',
+  enemy: 'Grow bigger before meeting a red crowd.',
+  gate: 'Red gates shrink your crowd.',
+  wall: 'That wall cost more blobs than you had.',
+  bridge: 'Keep to the middle of the bridge.',
+  boss: 'Stop tapping when the boss\'s gloves glow to BLOCK.',
+};
+
 export class Hud {
   constructor() {
     this.coins = $('coins-value');
@@ -78,15 +102,35 @@ export class Hud {
     this.topbar.classList.toggle('fighting', visible);
   }
 
+  showHint(id) {
+    if (HINTS[id]) this.flash($('hint'), HINTS[id], 2600);
+  }
+
+  // A gate result floats up from the crowd (+12 green, -5 red).
+  floatText(worldPosition, text, tone, camera) {
+    projected.copy(worldPosition).project(camera);
+    const el = Object.assign(document.createElement('div'), { className: `float-text ink ${tone}`, textContent: text });
+    el.style.left = `${(projected.x + 1) * 50}vw`;
+    el.style.top = `${(1 - projected.y) * 50}vh`;
+    this.bubbles.append(el);
+    setTimeout(() => el.remove(), 900);
+  }
+
+  bump(el) {
+    el.classList.remove('bump');
+    void el.offsetWidth;
+    el.classList.add('bump');
+  }
+
   // Restarts a one-shot CSS animation on an element showing `text`.
-  flash(el, text) {
+  flash(el, text, duration = 1600) {
     el.textContent = text;
     el.hidden = false;
     el.style.animation = 'none';
     void el.offsetWidth; // reflow so the animation restarts
     el.style.animation = '';
     clearTimeout(el.hideTimer);
-    el.hideTimer = setTimeout(() => { el.hidden = true; }, 1600);
+    el.hideTimer = setTimeout(() => { el.hidden = true; }, duration);
   }
 
   showBanner(text) {
@@ -164,8 +208,9 @@ export class Hud {
     this.confetti();
   }
 
-  showLose({ coins, onContinue }) {
+  showLose({ coins, cause, onContinue }) {
     $('lose-coins').textContent = `+${coins}`;
+    $('lose-tip').textContent = LOSE_TIPS[cause] ?? '';
     $('lose-continue').onclick = onContinue;
     this.show('lose');
   }

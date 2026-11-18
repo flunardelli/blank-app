@@ -1,6 +1,7 @@
 // A crowd of gummy humanoids rendered as one InstancedMesh.
 // `count` is the logical size (can exceed what we draw); `units` are the visible bodies.
 import * as THREE from 'three';
+import { CONFIG } from './config.js';
 import { crowdSpacing, formationRadius, formationSlot } from './rules.js';
 
 const matrix = new THREE.Matrix4();
@@ -27,10 +28,15 @@ export class Crowd {
     this.count = 0;
     this.center = { x: 0, d: 0 };
     this.mood = 'idle'; // idle | run | fight | cheer
+    this.maxRadius = CONFIG.crowd.maxRadius; // lowered to squeeze through a narrow bridge
+  }
+
+  get formationConfig() {
+    return { ...CONFIG.crowd, maxRadius: this.maxRadius };
   }
 
   get radius() {
-    return formationRadius(this.units.length);
+    return formationRadius(this.units.length, this.formationConfig);
   }
 
   spawnUnit() {
@@ -62,7 +68,7 @@ export class Crowd {
   }
 
   update(dt, time) {
-    const spacing = crowdSpacing(this.units.length);
+    const spacing = crowdSpacing(this.units.length, this.formationConfig);
     const follow = Math.min(1, dt * 9);
     const tightness = this.mood === 'fight' ? 0.75 : 1;
     this.units.forEach((unit, i) => {

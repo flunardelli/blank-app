@@ -228,3 +228,32 @@ export const emojiTexture = (emoji) => cached(`emoji:${emoji}`, () => {
   ctx.fillText(emoji, 64, 70);
   return toTexture(canvas);
 });
+
+export const brickTexture = () => cached('brick', () => {
+  const [canvas, ctx] = makeCanvas(128, 128);
+  ctx.fillStyle = '#d9b8a0'; // mortar
+  ctx.fillRect(0, 0, 128, 128);
+  const rows = 6;
+  const h = 128 / rows;
+  for (let r = 0; r < rows; r++) {
+    const offset = r % 2 ? 16 : 0;
+    for (let x = -32 + offset; x < 128; x += 32) {
+      ctx.fillStyle = ['#c8553d', '#d0623f', '#bb4a35'][(r + x) & 1 ? 0 : (r % 3)];
+      ctx.beginPath();
+      ctx.roundRect(x + 2, r * h + 2, 28, h - 4, 4);
+      ctx.fill();
+    }
+  }
+  const texture = toTexture(canvas, { repeat: true });
+  return texture;
+});
+
+export const plankTexture = () => cached('plank', () => {
+  const [canvas, ctx] = makeCanvas(32, 64);
+  ctx.fillStyle = '#e9b97a';
+  ctx.fillRect(0, 0, 32, 64);
+  ctx.fillStyle = '#c98f52';
+  ctx.fillRect(0, 0, 32, 4);
+  ctx.fillRect(0, 32, 32, 4);
+  return toTexture(canvas, { repeat: true });
+});

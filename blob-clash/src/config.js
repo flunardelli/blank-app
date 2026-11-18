@@ -29,9 +29,19 @@ export const CONFIG = {
   track: {
     width: 10,
     lanes: [-3.3, 0, 3.3],
-    segmentLength: 38,
     introLength: 16,
   },
+  // Levels are a sequence of authored chunks. Each mechanic unlocks at a level, appears there
+  // alone first (with a hint), and only later mixes with the others: teach, test, twist.
+  chunks: {
+    unlock: { gate: 1, enemy: 1, slider: 2, spikes: 3, trap: 4, wall: 6, gateRisk: 7, bridge: 8 },
+    countBase: 5,
+    countPerLevel: 1,
+    countMax: 10,
+    gloveSkinFrom: 5, // spring gloves are a later "twist" skin for sliders
+  },
+  bridge: { halfWidth: 1.9, introHalfWidth: 2.5, length: 22 },
+  wall: { costMin: 0.3, costMax: 0.5, multiplier: 3 },
   crowd: {
     spacing: 0.55,
     unitRadius: 0.3,
@@ -81,7 +91,10 @@ export const CONFIG = {
   boss: {
     baseDifficulty: 0.35, // boss HP as a share of the best reachable crowd
     difficultyPerLevel: 0.035,
-    maxDifficulty: 0.8,
+    maxDifficulty: 0.74, // + spike on big boss levels
+    bossEvery: 5, // every 5th level is a big boss level...
+    spike: 0.12,
+    relief: 0.08, // ...and the next one is a breather
     finishGap: 4, // straight run between the last segment and the finish line
     ringDepth: 11,
   },

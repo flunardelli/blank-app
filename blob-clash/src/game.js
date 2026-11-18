@@ -7,7 +7,7 @@ import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './
 import { createCoin } from './art/models.js';
 import { bossForLevel } from './bosses.js';
 import {
-  applyGate, bonusMultiplier, championStats, isBlocked, isCounter, strikeDamage, chestReward, chooseGate, clashRate, clashStep,
+  applyGate, bridgeAt, fallsOffBridge, gateLabel, bonusMultiplier, championStats, isBlocked, isCounter, strikeDamage, chestReward, chooseGate, clashRate, clashStep,
   comboStep, crossesObstacle, pressesButton, rewardCoins, sliderX, startBlobsFor, upgradeCost,
 } from './rules.js';
 import { loadSave, writeSave } from './save.js';
@@ -75,6 +75,9 @@ export class Game {
     this.remainingCoins = [...this.level.coins];
     this.runCoins = 0;
     this.keyTaken = false;
+    this.deathCause = null;
+    this.slowMo = 0;
+    this.shownHints = new Set();
     this.fight = null;
 
     this.player.center = { x: 0, d: 0 };
@@ -86,6 +89,9 @@ export class Game {
     this.playerBubble = this.hud.createBubble('player');
     this.bossBubble = this.hud.createBubble('boss');
     this.view.enemies.forEach((e) => { e.bubble = this.hud.createBubble('enemy'); });
+    this.view.obstacles.filter((o) => o.obstacle.kind === 'trap').forEach((trap) => {
+      trap.arrow = this.hud.createBubble('arrow');
+    });
 
     this.snapCamera = true;
     this.hud.setCoins(this.save.coins);
@@ -167,6 +173,10 @@ export class Game {
   update(dt) {
     this.hud.setControls({ pause: ACTIVE_STATES.has(this.state) && !this.paused, settings: this.state === 'menu' && !this.paused });
     if (this.paused) return;
+    if (this.slowMo > 0) {
+      this.slowMo -= dt;
+      dt *= 0.25;
+    }
     this.time += dt;
     if (this.state === 'running') this.updateRunning(dt);
     else if (this.state === 'skirmish') this.updateSkirmish(dt);
@@ -182,10 +192,15 @@ export class Game {
 
   updateRunning(dt) {
     const { player } = this;
-    const maxX = Math.max(0, CONFIG.track.width / 2 - player.radius);
     player.center.d += CONFIG.crowd.forwardSpeed * dt;
+    // Approaching or on a bridge, the crowd squeezes; on it, the centre may drift to the edge.
+    const bridge = bridgeAt(this.level.bridges, player.center.d + 8) ?? bridgeAt(this.level.bridges, player.center.d);
+    player.maxRadius = bridge ? Math.max(0.6, bridge.halfWidth - 0.35) : CONFIG.crowd.maxRadius;
+    const onBridge = bridgeAt(this.level.bridges, player.center.d);
+    const maxX = onBridge ? onBridge.halfWidth : Math.max(0, CONFIG.track.width / 2 - player.radius);
     player.center.x = THREE.MathUtils.clamp(player.center.x + this.input.consumeLateral(dt, CONFIG.crowd), -maxX, maxX);
 
+    this.checkBridge();
     this.checkGates();
     this.checkPickups();
     this.checkButtons();
@@ -202,23 +217,62 @@ export class Game {
     this.nextGate += 1;
     const chosen = chooseGate(gate.pair, this.player.center.x);
     const before = this.player.count;
+    const panel = gate.panels[chosen === gate.pair.left ? 0 : 1];
+    if (chosen.cost) this.smashWall(panel, chosen.cost);
     const removed = this.player.setCount(applyGate(before, chosen));
+    this.hud.floatText(this.crowdTop(), gateLabel(chosen), this.player.count >= before ? 'good' : 'bad', this.world.camera);
+    this.hud.bump(this.playerBubble);
     this.sound.play(this.player.count >= before ? 'gateGood' : 'gateBad');
     this.haptics.pulse(this.player.count >= before ? 12 : [20, 30, 20]);
     if (this.player.count > before) {
       this.effects.emojis(new THREE.Vector3(this.player.center.x, 3, toZ(this.player.center.d)), 3);
     }
-    this.splash(removed, PALETTE.player.splat);
-    const panel = gate.panels[chosen === gate.pair.left ? 0 : 1];
+    this.splash(removed, PALETTE.player.splat, 'gate');
+    if (panel.wall) return;
     this.effects.tween(0.35, (k) => {
       panel.glass.material.opacity = 0.5 + Math.sin(k * Math.PI) * 0.4;
       panel.label.scale.setScalar(1 + Math.sin(k * Math.PI) * 0.4);
     }, () => { panel.glass.visible = panel.label.visible = false; });
   }
 
+  crowdTop() {
+    return new THREE.Vector3(this.player.center.x, 2.6, toZ(this.player.center.d));
+  }
+
+  // The wall eats `cost` blobs (front ones first), then crumbles.
+  smashWall(panel, cost) {
+    const eaten = this.player.take(Math.min(cost, this.player.units.length));
+    this.player.setCount(Math.max(0, this.player.count - (cost - eaten.length)));
+    this.splash(eaten, PALETTE.player.splat, 'wall');
+    const at = panel.glass.getWorldPosition(new THREE.Vector3());
+    this.effects.burst(at, 0xc8553d, { count: 24, speed: 9, size: 0.3 });
+    this.effects.impact(at, { stars: 3, scale: 1 });
+    this.effects.shake = Math.max(this.effects.shake, 0.6);
+    this.sound.play('slam');
+    panel.glass.visible = false;
+    panel.label.visible = false;
+  }
+
+  // Bodies past the bridge edge fall into the water.
+  checkBridge() {
+    const bridge = bridgeAt(this.level.bridges, this.player.center.d);
+    if (!bridge) return;
+    const { unitRadius } = CONFIG.crowd;
+    const falling = [];
+    this.player.units.forEach((u, i) => {
+      if (u.d >= bridge.d0 && u.d <= bridge.d1 && fallsOffBridge(bridge, u.x, unitRadius)) falling.push(i);
+    });
+    if (!falling.length) return;
+    const bodies = this.player.kill(falling);
+    bodies.forEach(({ x, d }) => this.effects.burst(new THREE.Vector3(x, -1.4, toZ(d)), 0xffffff, { count: 5, speed: 4, size: 0.18 }));
+    this.deathCause = 'bridge';
+    this.sound.play('pop', { minGap: 0.05 });
+  }
+
   // Blobs dying: drops + floor splat each, one throttled pop sound and a light buzz.
-  splash(bodies, color) {
+  splash(bodies, color, cause) {
     if (!bodies.length) return;
+    if (cause) this.deathCause = cause;
     bodies.forEach(({ x, d }) => this.effects.pop(x, toZ(d), color));
     this.sound.play('pop', { minGap: 0.05 });
     this.haptics.pulse(8);
@@ -263,7 +317,10 @@ export class Game {
       this.collectAnimation(this.view.key);
       this.sound.play('key');
       this.haptics.pulse(20);
-      this.hud.setKeys(Math.min(CONFIG.keys.perChest, this.save.keys + 1));
+      // Saved right away: a key is never lost because the level was.
+      this.save.keys = Math.min(CONFIG.keys.perChest, this.save.keys + 1);
+      writeSave(this.save);
+      this.hud.setKeys(this.save.keys);
     }
   }
 
@@ -295,14 +352,19 @@ export class Game {
     // Each body is tested once, when it crosses the obstacle line. Testing overlap every frame
     // would wipe the crowd: survivors re-pack into the dead bodies' slots, right on the spikes.
     const hits = [];
+    let hitCause = 'spikes';
     player.units.forEach((u, i) => {
-      if (near.some(({ obstacle }) => crossesObstacle(obstacle, this.time, u.x, u.prevD, u.d, unitRadius))) hits.push(i);
+      const hit = near.find(({ obstacle }) => crossesObstacle(obstacle, this.time, u.x, u.prevD, u.d, unitRadius));
+      if (hit) {
+        hits.push(i);
+        hitCause = hit.obstacle.kind;
+      }
     });
     if (!hits.length) return;
     // Bodies we don't draw (count > maxVisible) die with the same share as the visible ones.
     const hidden = player.count - player.units.length;
     const hiddenLosses = Math.round(hidden * (hits.length / player.units.length));
-    this.splash(player.kill(hits), PALETTE.player.splat);
+    this.splash(player.kill(hits), PALETTE.player.splat, hitCause);
     player.setCount(player.count - hiddenLosses);
     this.effects.shake = Math.max(this.effects.shake, 0.4);
   }
@@ -323,7 +385,7 @@ export class Game {
     const { player } = this;
     const enemy = s.target.crowd;
     [s.a, s.b] = clashStep(s.a, s.b, s.rate, dt);
-    this.splash(player.setCount(Math.ceil(s.a)), PALETTE.player.splat);
+    this.splash(player.setCount(Math.ceil(s.a)), PALETTE.player.splat, 'enemy');
     this.splash(enemy.setCount(Math.ceil(s.b)), PALETTE.enemy.splat);
     // Both crowds lean into each other.
     const gap = enemy.center.d - player.center.d;
@@ -536,6 +598,7 @@ export class Game {
   }
 
   knockOut() {
+    this.slowMo = 0.9; // seconds of real time at quarter speed: let the KO land
     this.hud.showFight(false);
     this.hud.popText('K.O.!');
     this.sound.play('ko');
@@ -544,6 +607,7 @@ export class Game {
   }
 
   championDown() {
+    this.deathCause = 'boss';
     this.hud.showFight(false);
     const { position } = this.champion.root;
     this.champion.root.visible = false;
@@ -586,7 +650,6 @@ export class Game {
     this.sound.play('win');
     const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
     let chest = 0;
-    if (this.keyTaken) this.save.keys += 1;
     if (this.save.keys >= CONFIG.keys.perChest) {
       chest = chestReward(this.level.level);
       this.save.keys = 0;
@@ -607,12 +670,12 @@ export class Game {
     this.sound.play('lose');
     this.haptics.pulse([60, 40, 60]);
     this.splash(this.player.setCount(0), PALETTE.player.splat);
-    this.save.coins += this.runCoins; // keys only count on a win
+    this.save.coins += this.runCoins;
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
     this.hud.setKeys(this.save.keys);
     this.effects.tween(0.8, () => {}, () => this.hud.showLose({
-      coins: this.runCoins, onContinue: () => this.loadLevel(this.level.level),
+      coins: this.runCoins, cause: this.deathCause, onContinue: () => this.loadLevel(this.level.level),
     }));
   }
 
@@ -734,6 +797,20 @@ export class Game {
     this.hud.placeBubble(this.playerBubble, bubbleAnchor, camera, player.count, player.count > 0);
 
     const inRange = (d) => d - player.center.d < CONFIG.hud.bubbleRange;
+    for (const trap of this.view.obstacles) {
+      if (!trap.arrow) continue;
+      const { button } = trap.obstacle;
+      bubbleAnchor.set(button.x, 1.6, toZ(button.d));
+      const show = trap.armed && button.d > player.center.d - 1 && inRange(button.d) && this.state !== 'menu';
+      this.hud.placeBubble(trap.arrow, bubbleAnchor, camera, '⬇', show);
+    }
+    if (this.state === 'running') {
+      for (const hint of this.level.hints) {
+        if (this.shownHints.has(hint) || player.center.d < hint.d - 6) continue;
+        this.shownHints.add(hint);
+        this.hud.showHint(hint.id);
+      }
+    }
     for (const { crowd, bubble } of this.view.enemies) {
       bubbleAnchor.set(crowd.center.x, 2.2, toZ(crowd.center.d));
       this.hud.placeBubble(bubble, bubbleAnchor, camera, crowd.count, crowd.count > 0 && inRange(crowd.center.d));
