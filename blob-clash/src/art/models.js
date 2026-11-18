@@ -7,6 +7,44 @@ import { checkerTexture, coinFaceTexture, melonFaceTexture, stripeTexture, textT
 import { gateLabel, isGoodGate } from '../rules.js';
 
 // ---- Materials ----------------------------------------------------------------
+// Geometries reused across levels: a level's dispose() must leave these alone.
+export const SHARED_GEOMETRIES = new Set();
+
+/**
+ * Bakes a static group's meshes into one mesh per material: same picture, far fewer draw calls
+ * (a spike pad goes from ~20 meshes to 2). Meshes flagged `userData.dynamic`, their children, and
+ * multi-material meshes are left alone, so anything animated on its own keeps its own mesh.
+ */
+export function bakeStatic(group) {
+  group.updateMatrixWorld(true);
+  const toGroup = group.matrixWorld.clone().invert();
+  const buckets = new Map();
+  const merged = [];
+  group.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || Array.isArray(o.material)) return;
+    for (let p = o; p && p !== group; p = p.parent) if (p.userData.dynamic) return;
+    let geometry = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    geometry.applyMatrix4(toGroup.clone().multiply(o.matrixWorld));
+    for (const name of Object.keys(geometry.attributes)) {
+      if (!['position', 'normal', 'uv', 'color'].includes(name)) geometry.deleteAttribute(name);
+    }
+    const key = `${o.material.uuid}:${Object.keys(geometry.attributes).sort().join()}`;
+    if (!buckets.has(key)) buckets.set(key, { material: o.material, geometries: [], castShadow: false, receiveShadow: false });
+    const bucket = buckets.get(key);
+    bucket.geometries.push(geometry);
+    bucket.castShadow ||= o.castShadow;
+    bucket.receiveShadow ||= o.receiveShadow;
+    merged.push(o);
+  });
+  merged.forEach((o) => o.removeFromParent());
+  for (const { material, geometries, castShadow, receiveShadow } of buckets.values()) {
+    const mesh = new THREE.Mesh(mergeGeometries(geometries), material);
+    Object.assign(mesh, { castShadow, receiveShadow });
+    group.add(mesh);
+  }
+  return group;
+}
+
 export function gummyMaterial({ opacity = 1, emissive = 0x000000 } = {}) {
   return new THREE.MeshPhysicalMaterial({
     vertexColors: true,
@@ -46,19 +84,21 @@ export function repaintGradients(root, { bottom, top }) {
 }
 
 // ---- Gummy humanoid (one merged geometry, instanced for the whole crowd) --------
-export function beanGeometry(segments = 16) {
+// Crowd bodies are instanced up to ~200 times on screen, so detail is kept just above what reads
+// at phone size (each blob was ~2k triangles; ~1k looks the same at that distance).
+export function beanGeometry(segments = 12, detail = 12) {
   // Chubby jelly-bean: wide hips, round head, no neck.
   const outline = [[0, 0.26], [0.3, 0.29], [0.46, 0.42], [0.52, 0.64], [0.5, 0.9], [0.44, 1.1],
     [0.34, 1.26], [0.2, 1.36], [0, 1.39]].map(([x, y]) => new THREE.Vector2(x, y));
-  return new THREE.LatheGeometry(new THREE.SplineCurve(outline).getPoints(20), segments);
+  return new THREE.LatheGeometry(new THREE.SplineCurve(outline).getPoints(detail), segments);
 }
 
 export function limb(radius, length, x, y, tilt) {
-  return new THREE.CapsuleGeometry(radius, length, 4, 8).rotateZ(tilt).translate(x, y, 0);
+  return new THREE.CapsuleGeometry(radius, length, 3, 6).rotateZ(tilt).translate(x, y, 0);
 }
 
 // Melting drops that hang off a jelly body, merged into its geometry.
-export function dripGeometries(spots, segments = 8) {
+export function dripGeometries(spots, segments = 6) {
   return spots.map(([x, y, z, size]) => new THREE.SphereGeometry(size, segments, segments - 2)
     .scale(1, 1.7, 1).translate(x, y - size * 0.6, z));
 }
@@ -150,6 +190,7 @@ export function createSpikePad(halfWidth, halfDepth) {
   group.add(base);
   const spikeGeometry = new THREE.ConeGeometry(0.22, 1.1, 10);
   const spikeMaterial = glossy(PALETTE.spike, { roughness: 0.2 });
+  spikeMaterial.userData.role = 'spike';
   for (let x = -halfWidth + 0.4; x <= halfWidth - 0.3; x += 0.75) {
     for (let z = -halfDepth + 0.4; z <= halfDepth - 0.3; z += 0.75) {
       const spike = new THREE.Mesh(spikeGeometry, spikeMaterial);
@@ -158,7 +199,7 @@ export function createSpikePad(halfWidth, halfDepth) {
       group.add(spike);
     }
   }
-  return group;
+  return bakeStatic(group);
 }
 
 export function createButton(radius) {
@@ -178,9 +219,8 @@ export function createButton(radius) {
 export function createSpikeField(halfDepth) {
   const half = CONFIG.track.width / 2;
   const group = createSpikePad(half, halfDepth);
-  const spikes = new THREE.Group();
-  [...group.children].slice(1).forEach((spike) => spikes.add(spike));
-  group.add(spikes);
+  // The pad is baked into one mesh per material; the spike mesh is the one lowered on disarm.
+  const spikes = group.children.find((mesh) => mesh.material.userData.role === 'spike');
   return { group, spikes };
 }
 
@@ -201,6 +241,7 @@ export function createKey() {
 }
 
 const coinGeometry = new THREE.CylinderGeometry(0.42, 0.42, 0.1, 28).rotateX(Math.PI / 2);
+SHARED_GEOMETRIES.add(coinGeometry);
 const coinMaterials = () => {
   const face = new THREE.MeshStandardMaterial({ map: coinFaceTexture(), metalness: 0.3, roughness: 0.3 });
   return [glossy(0xe0a000, { metalness: 0.4 }), face, face];
@@ -209,6 +250,25 @@ export function createCoin() {
   const coin = new THREE.Mesh(coinGeometry, coinMaterials());
   coin.castShadow = true;
   return coin;
+}
+
+/** A level's coins as one InstancedMesh (3 draw calls in all, instead of 3 per coin), spinning together. */
+export function createCoinField(positions) {
+  const mesh = new THREE.InstancedMesh(coinGeometry, coinMaterials(), Math.max(1, positions.length));
+  const matrix = new THREE.Matrix4();
+  const spin = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const shown = new THREE.Vector3(1, 1, 1);
+  const hidden = new THREE.Vector3(0, 0, 0);
+  const visible = positions.map(() => true);
+  mesh.count = positions.length;
+  const update = (time) => {
+    spin.setFromAxisAngle(up, time * 3);
+    positions.forEach((p, i) => mesh.setMatrixAt(i, matrix.compose(p, spin, visible[i] ? shown : hidden)));
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  update(0);
+  return { mesh, update, hide: (i) => { visible[i] = false; } };
 }
 
 /** `count` coins drawn in one call; the caller writes each instance matrix. */
@@ -244,10 +304,10 @@ export function createTrack(fromD, toD, theme) {
   for (const x of [-width / 2 - 0.2, width / 2 + 0.2]) {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, length), railMaterial);
     rail.position.set(x, 0.05, deck.position.z);
-    rail.receiveShadow = rail.castShadow = true;
+    rail.receiveShadow = true;
     group.add(rail);
   }
-  return group;
+  return bakeStatic(group);
 }
 
 export function createGate(pair) {
@@ -270,13 +330,15 @@ export function createGate(pair) {
       }),
     );
     glass.position.set(x, 1.5, 0);
+    glass.userData.dynamic = true; // flashes and hides when crossed
     const label = textPlane(gateLabel(gate), 2.3);
+    label.userData.dynamic = true;
     label.position.set(x, 1.7, 0.2);
     label.renderOrder = 2;
     group.add(glass, label);
     return { glass, label };
   });
-  return { group, panels };
+  return { group: bakeStatic(group), panels };
 }
 
 export function createFinishLine() {
@@ -343,7 +405,7 @@ export function createRing(depth, arena) {
   door.position.set(0, 3.4, archZ);
   group.add(beam, door);
   if (arena === 'castle') addCastle(group, depth);
-  return group;
+  return bakeStatic(group);
 }
 
 // The castle arena: a stone wall with battlements behind the champion's side, a tower at every back corner and torches

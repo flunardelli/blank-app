@@ -68,13 +68,20 @@ export const CONFIG = {
     multipliers: [2, 2, 3],
     subMin: 2,
     subMax: 8,
-    badChance: 0.45,
+    badChance: 0.25, // a bad door is a lure: coins wait right behind it (see makeCoinRow)
     maxCount: 999,
+    // Past this size enemy crowds grow with the excess, so crowds stay in the hundreds and gates
+    // keep mattering instead of everything piling up at maxCount.
+    softCap: 300,
   },
   enemy: {
     minShare: 0.12, // enemy crowd size as a share of the best reachable count, on the first level
     maxShare: 0.26,
     pressureShare: 0.18, // added to both shares at full campaign pressure
+    // The first levels teach, they shouldn't be lost: enemy crowds there are this much smaller.
+    easeLevels: 2,
+    easeFactor: 0.6,
+    easeSliderSpeed: 0.7, // and the sliders swing slower, to learn their rhythm
     maxVisible: 60,
   },
   skirmish: { minRatePerSecond: 8, rateFraction: 1.2 },
@@ -92,7 +99,8 @@ export const CONFIG = {
     // (weight × featuredBoost), so neighbouring worlds feel different.
     weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35, axe: 0.35, ball: 0.35, pillars: 0.3, pusher: 0.3 },
     // First level of a world: axe world 3, ball world 4, pillars world 5, pusher world 6. One new hazard per world.
-    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3, axe: 7, ball: 10, pillars: 13, pusher: 16 },
+    // Level 1 only has its world's sliders; spikes follow, and the instant-kill trap waits for world 2.
+    unlockLevel: { slider: 1, spikes: 2, trap: 4, saw: 2, jump: 2, bombs: 3, axe: 7, ball: 10, pillars: 13, pusher: 16 },
     featuredBoost: 3,
     spikeHalfDepth: 1.1,
     // Spike pads hug the track edges (like the reference): [centre x, half width] per pad.
@@ -180,7 +188,7 @@ export const CONFIG = {
     // (maxDifficulty) along the campaign's pressure curve; kindFactor scales it per level kind.
     // Required taps/s = 3 × difficulty, so the cap stays well under a human's tapping speed.
     minDifficulty: 0.3,
-    maxDifficulty: 1.4,
+    maxDifficulty: 1.0,
     kindFactor: { mini: 0.8, boss: 1, chest: 1 },
     miniScale: 0.8, // mini bosses are a smaller roster boss in the world's colour
     rigScale: 2.6, // a boss rig is modelled for a champion; this is its size in the ring
@@ -302,5 +310,8 @@ export const CONFIG = {
     height: 0.7, // camera and look-at height, per unit of the dancer's scale
   },
   reward: { base: 50, perLevel: 10 },
-  upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
+  upgrades: { baseCost: 150, costGrowth: 1.45, damagePerLevel: 0.25, blobsPerLevel: 1 },
+  // A typical player, used to size bosses for the upgrades they'll realistically own by a level
+  // (economy.js). Better or luckier players stay a little ahead of the curve; nobody breaks it.
+  economy: { coinShare: 0.6, multiplier: 2.4, crowdShare: 0.6 },
 };

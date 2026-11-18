@@ -12,7 +12,16 @@ import { loadMuted, writeMuted } from './save.js';
 await document.fonts.load('700 64px Fredoka').catch(() => {});
 
 const canvas = document.getElementById('scene');
-const world = createWorld(canvas);
+const loading = document.getElementById('loading');
+let world;
+try {
+  world = createWorld(canvas);
+} catch (error) {
+  // No WebGL (very old device, or disabled): say so instead of showing a blank screen.
+  loading.querySelector('.spinner').remove();
+  document.getElementById('loading-error').textContent = 'Este aparelho não consegue rodar jogos 3D no navegador.';
+  throw error;
+}
 const hud = new Hud();
 const input = new Input(canvas);
 const audio = new GameAudio({
@@ -47,12 +56,21 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 window.addEventListener('blur', () => pause.pause());
 const clock = new THREE.Clock();
 
+let firstFrame = true;
 world.renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 1 / 20); // avoid tunnelling after a tab switch
   if (!pause.paused) game.update(dt); // still render while paused so the frozen scene stays on screen
   skinShop.update();
   world.render();
+  if (firstFrame) {
+    firstFrame = false;
+    loading.classList.add('done');
+    setTimeout(() => loading.remove(), 500);
+  }
 });
 
-window.__game = game;
-window.__pause = pause; // handy for debugging from the console
+// Console and test-harness access only with ?debug, not in the shipped game.
+if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { __game: game, __pause: pause });
+
+// Installable and playable offline (needs HTTPS, e.g. GitHub Pages).
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

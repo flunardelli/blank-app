@@ -5,7 +5,9 @@ import { cloudTexture, skyTexture, waterTexture } from './art/textures.js';
 
 export function createWorld(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Phones have 3x screens; 1.5x looks the same at arm's length and costs half the pixels.
+  const touch = window.matchMedia?.('(pointer: coarse)').matches;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, touch ? 1.5 : 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -15,7 +17,7 @@ export function createWorld(canvas) {
   scene.background = skyTexture();
   scene.fog = new THREE.Fog(PALETTE.skyHorizon, 60, 170);
 
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 500);
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 175); // the fog hides everything past 170
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x9fb6d6, 1.9);
   scene.add(hemi);

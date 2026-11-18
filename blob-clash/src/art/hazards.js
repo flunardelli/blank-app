@@ -1,7 +1,7 @@
 // Track hazards from the later phases: saw blades on rails, jump ramps, bombs and gray walkers.
 import * as THREE from 'three';
 import { CONFIG, PALETTE } from '../config.js';
-import { glossy } from './models.js';
+import { bakeStatic, glossy } from './models.js';
 
 // Yellow ramp face with three white "jump" triangles pointing down the track (like the reference).
 let rampTexture;
@@ -173,7 +173,7 @@ export function createSpikedPillar(halfWidth, halfDepth, height = 2.2) {
     }
   }
   group.traverse((o) => { o.castShadow = o.receiveShadow = true; });
-  return group;
+  return bakeStatic(group);
 }
 
 /**

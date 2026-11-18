@@ -7,6 +7,40 @@ import { overflow } from './emoji.js';
 const projected = new THREE.Vector3();
 const $ = (id) => document.getElementById(id);
 
+export const HINTS = {
+  gate: 'Arraste para o portão com o MAIOR resultado!',
+  slider: 'Passe quando ela recuar para a borda!',
+  spikes: 'Desvie dos espinhos!',
+  saw: 'Espere a serra passar!',
+  ramp: 'Pegue a rampa para pular as serras!',
+  bomb: 'Bombas explodem em volta: passe longe!',
+  trap: 'Pise no BOTÃO VERDE para baixar os espinhos!',
+  axe: 'Passe quando o machado estiver no alto!',
+  ball: 'A faixa amarela avisa: a bola vem por ali!',
+  pillars: 'Fique no meio entre os pilares!',
+  pusher: 'Cuidado com o bloco que entra pela lateral!',
+  walker: 'Desvie dos bonecos cinza: cada um leva blobs!',
+  recruit: 'Encoste nos bonecos dormindo para recrutá-los!',
+  enemy: 'A multidão maior vence o choque!',
+};
+
+// Why the run ended, and what to try next time.
+const LOSE_TIPS = {
+  slider: 'Passe pela fatia quando ela recuar para a borda.',
+  spikes: 'Contorne os espinhos pelo lado livre.',
+  saw: 'Espere a serra passar, ou pule pela rampa.',
+  bomb: 'Passe pelo lado oposto às bombas.',
+  trap: 'Pise no botão verde antes dos espinhos.',
+  axe: 'Passe quando o machado estiver no alto do arco.',
+  ball: 'Saia da faixa amarela antes da bola chegar.',
+  pillars: 'Fique no meio entre os pilares.',
+  pusher: 'Espere o bloco recuar antes de passar.',
+  walker: 'Desvie dos bonecos cinza.',
+  enemy: 'Cresça mais antes de enfrentar uma multidão vermelha.',
+  gate: 'Portões vermelhos encolhem a multidão.',
+  boss: 'Arraste para o lado quando o chefe brilhar, e contra-ataque!',
+};
+
 export class Hud {
   constructor() {
     this.coins = $('coins-value');
@@ -76,14 +110,19 @@ export class Hud {
   }
 
   // Restarts a one-shot CSS animation on an element showing `text`.
-  flash(el, text) {
+  // First-encounter coaching: one short line per hazard, shown once per player (see save.seen).
+  showHint(id) {
+    if (HINTS[id]) this.flash($('hint'), HINTS[id], 2800);
+  }
+
+  flash(el, text, duration = 1600) {
     el.textContent = text;
     el.hidden = false;
     el.style.animation = 'none';
     void el.offsetWidth; // reflow so the animation restarts
     el.style.animation = '';
     clearTimeout(el.hideTimer);
-    el.hideTimer = setTimeout(() => { el.hidden = true; }, 1600);
+    el.hideTimer = setTimeout(() => { el.hidden = true; }, duration);
   }
 
   /** A string, or `{ text, title }`: the big line and an optional smaller line above it (a world boss's entrance). */
@@ -239,8 +278,9 @@ export class Hud {
     this.confetti('ending-confetti');
   }
 
-  showLose({ coins, onContinue }) {
+  showLose({ coins, cause, onContinue }) {
     $('lose-coins').textContent = `+${coins}`;
+    $('lose-tip').textContent = LOSE_TIPS[cause] ?? '';
     $('lose-continue').onclick = onContinue;
     this.show('lose');
   }

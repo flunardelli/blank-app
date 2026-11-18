@@ -1,7 +1,8 @@
 // Procedural, seeded level generator. Output is plain data; levelView.js renders it.
 import { CONFIG } from './config.js';
 import { createRng } from './rng.js';
-import { applyGate, bestGate, bossDifficulty } from './rules.js';
+import { expectedUpgrades } from './economy.js';
+import { applyGate, bestGate, bossDifficulty, damageFor, startBlobsFor } from './rules.js';
 import { levelInfo } from './worlds.js';
 
 // Some segments open with two gate rows in a row. The gap is short enough that the crowd can still
@@ -22,13 +23,33 @@ function badGate(rng, cfg) {
 
 // Two good doors are always one × and one +: never the same operation twice (no "×2 | ×2"),
 // so the choice depends on the crowd size instead of being a coin flip.
-function makeGatePair(rng, d, level, cfg, forceGood) {
+// Below this relative difference the two doors land on about the same crowd: not a choice.
+export const MIN_GATE_GAP = 0.15;
+
+function makeGatePair(rng, d, level, cfg, forceGood, count = 1) {
   const good = goodGate(rng, level, cfg);
   let other;
   if (!forceGood && rng.chance(cfg.badChance)) other = badGate(rng, cfg);
   else other = good.op === 'x' ? addGate(rng, level, cfg) : multiplyGate(rng, cfg);
+  const add = [good, other].find((o) => o.op === '+');
+  const mul = [good, other].find((o) => o.op === 'x');
+  // Big crowds only get ×2: ×3 on a few hundred blobs would pin every later gate at maxCount.
+  if (mul && count > cfg.softCap) mul.value = 2;
+  // A × and a + that land within MIN_GATE_GAP of each other: push the + further from the × until
+  // the choice matters. Deterministic (no rng draw), so it never reshuffles the rest of the level.
+  if (add && mul) {
+    for (let tries = 0; tries < 4 && gapOf(count, add, mul) < MIN_GATE_GAP; tries++) {
+      const addWins = applyGate(count, add) >= applyGate(count, mul);
+      add.value = Math.max(1, Math.round(add.value * (addWins ? 1.6 : 0.55)));
+    }
+  }
   const [left, right] = rng.chance(0.5) ? [good, other] : [other, good];
   return { d, row: 0, left, right };
+}
+
+function gapOf(count, a, b) {
+  const [x, y] = [applyGate(count, a), applyGate(count, b)];
+  return Math.abs(x - y) / Math.max(x, y, 1);
 }
 
 // One slider on a random edge, or a pair on both edges sliding in turns.
@@ -191,8 +212,9 @@ function makeRecruits(rng, d, pressure, cfg) {
   }));
 }
 
-function makeCoinRow(rng, d, cfg) {
-  const x = rng.pick(cfg.track.lanes);
+function makeCoinRow(rng, d, cfg, lureX) {
+  const lane = rng.pick(cfg.track.lanes); // always drawn, so a lure doesn't reshuffle the rest of the level
+  const x = lureX ?? lane;
   return Array.from({ length: cfg.coins.perRow }, (_, i) => ({ x, d: d + i * cfg.coins.spacing }));
 }
 
@@ -212,20 +234,30 @@ export function generateLevel(level, cfg = CONFIG) {
   // Own stream, so adding recruits never reshuffles the rest of a level.
   const recruitRng = createRng(level * 104729 + 5);
   const weights = hazardWeights(level, cfg.obstacle);
-  // Best reachable crowd with a fresh (non-upgraded) start and perfect gate choices.
-  let bestCount = 1;
+  // Best reachable crowd with perfect gate choices, starting from the upgrades a typical player
+  // owns at this level (economy.js): the boss is sized for that player.
+  const expected = expectedUpgrades(level);
+  let bestCount = startBlobsFor(expected.blobs, cfg.upgrades);
+  // The crowd the gates are tuned for: like bestCount but without recruits, so adding or removing
+  // recruits never changes a gate.
+  let gateCount = bestCount;
   let d = track.introLength;
 
   for (let s = 0; s < segments; s++, d += track.segmentLength) {
     const rowChance = DOUBLE_ROW.baseChance + DOUBLE_ROW.pressureChance * pressure;
     const rows = s > 0 && rng.chance(rowChance) ? 2 : 1;
     for (let row = 0; row < rows; row++) {
-      const pair = { ...makeGatePair(rng, d + row * DOUBLE_ROW.gap, level, cfg.gates, s === 0), row };
+      const pair = { ...makeGatePair(rng, d + row * DOUBLE_ROW.gap, level, cfg.gates, s === 0, gateCount), row };
       gates.push(pair);
       bestCount = applyGate(bestCount, bestGate(bestCount, pair), cfg.gates.maxCount);
+      gateCount = applyGate(gateCount, bestGate(gateCount, pair), cfg.gates.maxCount);
     }
 
-    coins.push(...makeCoinRow(rng, d + 6, cfg));
+    // Lure: when a bad door is on offer, the coin row waits right behind it (coins vs blobs).
+    const lastPair = gates[gates.length - 1];
+    const bad = [lastPair.left, lastPair.right].find((o) => o.op === '-' || o.op === '/');
+    const lureX = bad ? (bad === lastPair.left ? -1 : 1) * cfg.track.lanes[2] : undefined;
+    coins.push(...makeCoinRow(rng, d + 6, cfg, lureX));
     obstacles.push(...makeObstacles(rng, d + 16, weights, cfg));
 
     if (recruitRng.chance(cfg.recruits.chance)) {
@@ -236,16 +268,35 @@ export function generateLevel(level, cfg = CONFIG) {
 
     if (s % 2 === 1) {
       const rise = cfg.enemy.pressureShare * pressure;
-      const share = cfg.enemy.minShare + rise + rng.next() * (cfg.enemy.maxShare - cfg.enemy.minShare);
-      const count = Math.max(2, Math.round(bestCount * share));
+      const ease = level <= cfg.enemy.easeLevels ? cfg.enemy.easeFactor : 1;
+      const share = ease * (cfg.enemy.minShare + rise + rng.next() * (cfg.enemy.maxShare - cfg.enemy.minShare));
+      const enemyFor = (crowd) => Math.max(2, Math.round(crowd * share));
+      const count = enemyFor(bestCount);
       enemies.push({ d: d + 29, count });
       bestCount -= count;
+      gateCount -= enemyFor(gateCount);
     } else if (s > 0 && level >= cfg.walkers.fromLevel) {
       walkers.push(...makeWalkers(rng, d + 28, level, pressure, cfg)); // dodgeable: perfect play loses nothing
     }
   }
 
-  const finishD = d + cfg.boss.finishGap;
+  // A crowd that grew far past the soft cap meets a guard crowd just before the finish line, so the
+  // boss fight (and the chest payout) starts from the hundreds, not from maxCount. Sized on what a
+  // *typical* crowd (economy.crowdShare of the best one) carries past the cap: sizing it on the
+  // perfect crowd would wall off everyone else.
+  let finishD = d + cfg.boss.finishGap;
+  // Teaching levels: sliders swing slower while the player learns their rhythm.
+  if (level <= cfg.enemy.easeLevels) {
+    obstacles.filter((o) => o.kind === 'slider').forEach((o) => { o.speed *= cfg.enemy.easeSliderSpeed; });
+  }
+
+  const typicalCrowd = bestCount * cfg.economy.crowdShare;
+  if (typicalCrowd > cfg.gates.softCap) {
+    const count = Math.round((typicalCrowd - cfg.gates.softCap) * 0.8 + cfg.gates.softCap * cfg.enemy.minShare);
+    enemies.push({ d: d + 2, count, guard: true }); // resized in play to the crowd that really arrives (game.js)
+    bestCount -= count;
+    finishD += 8;
+  }
   // One key per level, between two segments' coin rows.
   const keySegment = rng.int(1, segments - 1);
   const key = { x: rng.pick(track.lanes), d: track.introLength + keySegment * track.segmentLength - 4 };
@@ -262,7 +313,11 @@ export function generateLevel(level, cfg = CONFIG) {
     walkers: walkers.map((w, id) => ({ ...w, id })),
     recruits: recruits.map((r, id) => ({ ...r, id })),
     finishD,
-    boss: { d: bossD, hp: Math.max(5, Math.round(bestCount * bossDifficulty(level, cfg.boss))) },
+    boss: {
+      d: bossD,
+      hp: Math.max(5, Math.round(bestCount * bossDifficulty(level, cfg.boss) * damageFor(expected.damage, cfg.upgrades))),
+    },
+    expected,
     ladderStart: finishD + cfg.boss.ringDepth + 1,
     bestCount,
   };

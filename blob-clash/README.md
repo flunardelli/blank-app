@@ -24,7 +24,7 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
 - **Multidões vermelhas** bloqueiam a pista: os dois lados se anulam um a um.
 - **Skins** (`src/skins.js`): o botão SKINS no menu abre a loja; skins se compram com moedas e vestem só o **líder da multidão** e o **campeão** da luta (o resto da multidão continua laranja). O catálogo é uma lista; os acessórios ficam em `src/art/skinModels.js`.
 - **Fase do baú** (`src/chest.js`, `src/chestStage.js`, `src/art/chest.js`): a pista termina num baú 3D gigante. Os blobs pulam dentro um a um (o contador de moedas sobe a cada um), a tampa bate, a câmera gira do lado para a frente com zoom (~1,2 s) e a tampa abre com um tranco, soltando 360 moedas 3D giratórias (um só `InstancedMesh`) que caem e somem sem deixar nada no chão. Cada blob vale mais moedas a cada mundo; o multiplicador e as estrelas vêm do tamanho da multidão que chegou. Tudo em `CONFIG.chest`.
-- **Moedas** na pista e **uma chave por fase**. Com 3 chaves, abre um **baú** de moedas.
+- **Moedas** na pista e **uma chave por fase** (salva na hora em que é pega). Com 3 chaves, abre um **baú** de moedas.
 - **Boss:** a multidão se funde num campeão de luvas, que abre a luta com um **soco voador**.
   **TAP TO FIGHT!**: cada toque é um jab; o 5º toque seguido vira **JUMP PUNCH** (2,5× de dano).
   A partir do mundo 2 os chefes ganham mecânicas (`mechanics` em `src/bosses.js`, estado puro em `bossBrainStep`):
@@ -65,6 +65,28 @@ Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`
   carregar, tudo continua funcionando só com os keyframes de `moves.js`.
 - A vida que sobrar decide até onde o Boss voa na pista **x1.0 … x5.0**, que multiplica as moedas.
 - Moedas compram upgrades no menu: **Damage** (força do soco) e **Blobs** (tamanho inicial).
+
+### Equilíbrio e primeira experiência
+- **Curva de poder esperada** (`src/economy.js`): os chefes são dimensionados para os upgrades que um jogador típico
+  tem em cada fase (60% das moedas e da multidão, bônus médio x2,4, pagamento dos baús incluído). Comprar mais que
+  isso deixa o jogador à frente sem quebrar a luta: com jabs simples, o típico precisa de ~1,2 toque/s na fase 1 e
+  ~4,8 no último chefão.
+- **Teto suave** (`gates.softCap`, 300): multidões grandes só recebem ×2, e uma multidão vermelha guarda a chegada,
+  dimensionada na hora para aparar só o que passou do teto (`guardSize`, nunca vence).
+- **Portões**: um par × / + que daria quase o mesmo resultado (< 15%) é afastado; portões ruins são mais raros e
+  servem de isca, com a fileira de moedas logo atrás deles.
+- **Fase 1** só tem as fatias do mundo 1; espinhos chegam na fase 2 e a armadilha na fase 4. Os inimigos das duas
+  primeiras fases são 40% menores.
+- **Dica de primeiro encontro**: na primeira vez que o jogador vê cada perigo, aparece uma linha de instrução
+  (uma vez por jogador, salva em `save.seen`). A tela de derrota diz o que matou e o que tentar.
+
+### Lançamento
+- **Desempenho em celular**: objetos estáticos fundidos por material (`bakeStatic`), moedas instanciadas, sombras
+  só em personagens e perigos móveis, multidões inimigas na névoa não são desenhadas, DPR ≤ 1,5 em telas de toque.
+- **PWA**: `manifest.webmanifest`, ícones e `sw.js` (rede primeiro, cache só offline): instalável e jogável offline via HTTPS.
+- **Analytics**: `track()` em `src/analytics.js` registra `level_start`, `level_complete`, `level_fail` (com a causa)
+  e `upgrade_buy`; basta ligar um backend em `send()`.
+- `?debug` expõe `window.__game` e `window.__pause`.
 
 ## Rodando
 ES modules não funcionam via `file://`, então sirva a pasta por HTTP:

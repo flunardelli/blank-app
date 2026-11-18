@@ -105,7 +105,7 @@ test('bonus multiplier grows with remaining health, snapped to 0.2 steps, capped
 
 test('rewards, upgrade costs and coin formatting', () => {
   assert.equal(rewardCoins(40, 2, 1.5, { base: 50, perLevel: 10 }), 165);
-  assert.equal(upgradeCost(1), 50);
+  assert.equal(upgradeCost(1, { baseCost: 50, costGrowth: 1.6 }), 50);
   assert.ok(upgradeCost(3) > upgradeCost(2));
   assert.equal(formatCoins(950), '950');
   assert.equal(formatCoins(8190), '8.19K');
@@ -396,4 +396,13 @@ test('a mini boss keeps its simple jab when it enrages', async () => {
   const { bossForLevel } = await import('../src/bosses.js');
   const mini = bossForLevel(4);
   assert.equal(mini.rage.move, 'jab');
+});
+
+test('the finish guard trims only what a crowd carries past the soft cap, and never wins', async () => {
+  const { guardSize } = await import('../src/rules.js');
+  const cfg = { softCap: 300 };
+  assert.equal(guardSize(100, cfg), 10);
+  assert.equal(guardSize(700, cfg), 350); // 80% of the 400 past the cap, plus a token 30
+  for (const crowd of [1, 2, 5, 50, 299, 300, 301, 999]) assert.ok(guardSize(crowd, cfg) < crowd, `crowd ${crowd}`);
+  assert.equal(guardSize(1, cfg), 0, 'a lone blob meets no guard');
 });
