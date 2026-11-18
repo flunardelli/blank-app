@@ -98,6 +98,16 @@ export function bossPunchDamage(championHp, { interval, strikes }, { bossKillSec
   return ((championHp / bossKillSeconds) * interval) / strikes;
 }
 
+// One-finger defence: a player who stops tapping through the boss's wind-up blocks the strike,
+// and a tap right after a block lands a counter punch.
+export const isBlocked = (lastTap, windupStart) => lastTap < windupStart;
+
+export function strikeDamage(championMaxHp, attack, blocked, cfg = CONFIG.boxing) {
+  return bossPunchDamage(championMaxHp, attack, cfg) * (blocked ? cfg.blockFactor : 1);
+}
+
+export const isCounter = (now, lastBlock, { counterWindow } = CONFIG.boxing) => now - lastBlock <= counterWindow;
+
 /**
  * Advances the player's combo on a tap. Taps within `comboWindow` chain; every
  * `finisherEvery`-th chained tap is a flying jump punch with extra damage.

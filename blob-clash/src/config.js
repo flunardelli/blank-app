@@ -76,19 +76,23 @@ export const CONFIG = {
     ],
     minSpikeGap: 4.5,
   },
-  coins: { perRow: 5, spacing: 1.6, value: 10 },
+  coins: { perRow: 5, spacing: 1.6, value: 5 },
   hud: { bubbleRange: 42 }, // only label crowds this close, so the horizon stays clean
   boss: {
-    baseDifficulty: 0.4, // boss HP as a share of the best reachable crowd
-    difficultyPerLevel: 0.04,
-    maxDifficulty: 0.9,
+    baseDifficulty: 0.35, // boss HP as a share of the best reachable crowd
+    difficultyPerLevel: 0.035,
+    maxDifficulty: 0.8,
     finishGap: 4, // straight run between the last segment and the finish line
     ringDepth: 11,
   },
   // Boss fight: the crowd merges into one champion; every tap is a punch.
   boxing: {
-    punchPerBlob: 1 / 30, // champion punch damage per blob in the crowd
-    bossKillSeconds: 10, // every boss knocks out any champion in this long: tap fast enough
+    punchPerBlob: 1 / 55, // champion punch damage per blob in the crowd
+    bossKillSeconds: 10, // unblocked, every boss knocks out any champion in this long
+    firstAttackDelay: 1.6, // the boss swings soon: no free KO before it ever attacks
+    blockFactor: 0.15, // damage taken when not tapping during the wind-up
+    counterWindow: 0.45, // tap this soon after a block for a counter punch
+    counterMultiplier: 3,
     tapCooldown: 0.06,
     comboWindow: 0.6, // taps closer than this chain into a combo
     finisherEvery: 5, // every 5th chained tap is a flying jump punch
@@ -97,6 +101,9 @@ export const CONFIG = {
   },
   bonus: { maxMultiplier: 5, step: 0.2, tileDepth: 2.6 },
   keys: { perChest: 3, chestCoinsPerLevel: 60 },
-  reward: { base: 50, perLevel: 10 },
-  upgrades: { baseCost: 50, costGrowth: 1.6, damagePerLevel: 0.25, blobsPerLevel: 1 },
+  reward: { base: 40, perLevel: 8 },
+  upgrades: { baseCost: 150, costGrowth: 1.45, damagePerLevel: 0.25, blobsPerLevel: 1 },
+  // A typical player, used to size bosses for the upgrades they'll realistically own by a level.
+  // Better (or luckier) players stay a little ahead of the curve; nobody breaks it.
+  economy: { coinShare: 0.6, multiplier: 2.4 },
 };

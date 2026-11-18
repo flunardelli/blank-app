@@ -102,7 +102,7 @@ test('bonus multiplier grows with remaining health, snapped to 0.2 steps, capped
 
 test('rewards, upgrade costs and coin formatting', () => {
   assert.equal(rewardCoins(40, 2, 1.5, { base: 50, perLevel: 10 }), 165);
-  assert.equal(upgradeCost(1), 50);
+  assert.equal(upgradeCost(1, { baseCost: 50, costGrowth: 1.6 }), 50);
   assert.ok(upgradeCost(3) > upgradeCost(2));
   assert.equal(formatCoins(950), '950');
   assert.equal(formatCoins(8190), '8.19K');
@@ -116,4 +116,24 @@ test('obstacles hit a body only on the frame it crosses the obstacle line', asyn
   assert.ok(crossesObstacle(spikes, 0, 0, 9.9, 10.1, 0.3));
   assert.ok(!crossesObstacle(spikes, 0, 0, 10.1, 10.3, 0.3)); // already past: no second hit
   assert.ok(!crossesObstacle(spikes, 0, 2, 9.9, 10.1, 0.3)); // crossed beside the pad
+});
+
+test('the expected power curve buys upgrades early, then with diminishing returns', async () => {
+  const { expectedUpgrades } = await import('../src/economy.js');
+  const total = (l) => { const u = expectedUpgrades(l); return u.damage + u.blobs; };
+  assert.deepEqual(expectedUpgrades(1), { damage: 1, blobs: 1 }); // a new player owns nothing
+  assert.ok(total(5) - total(1) >= 3, 'early levels reward the player with upgrades');
+  assert.ok(total(30) - total(20) < total(10) - total(1), 'later upgrades come slower');
+});
+
+test('not tapping through the wind-up blocks; a quick tap after a block counters', async () => {
+  const { isBlocked, strikeDamage, isCounter } = await import('../src/rules.js');
+  const attack = { interval: 1, strikes: 1 };
+  const cfg = { bossKillSeconds: 10, blockFactor: 0.15, counterWindow: 0.4 };
+  assert.ok(isBlocked(4.9, 5)); // last tap before the wind-up started
+  assert.ok(!isBlocked(5.1, 5)); // tapped during the wind-up: hit
+  assert.equal(strikeDamage(100, attack, false, cfg), 10);
+  assert.ok(Math.abs(strikeDamage(100, attack, true, cfg) - 1.5) < 1e-9);
+  assert.ok(isCounter(6.3, 6, cfg));
+  assert.ok(!isCounter(6.5, 6, cfg));
 });

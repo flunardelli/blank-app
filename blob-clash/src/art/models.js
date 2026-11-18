@@ -242,7 +242,12 @@ export function createBoss({ colors, glove: gloveColor, headgear, body: [width, 
   });
 
   root.scale.setScalar(3);
-  return { root, body, arms };
+  const gloveMaterials = [];
+  arms.forEach((arm) => arm.traverse((o) => {
+    if (o.isMesh && o.material.color.getHex() === new THREE.Color(gloveColor).getHex()) gloveMaterials.push(o.material);
+  }));
+  gloveMaterials.forEach((m) => { m.emissive.set(0xff1a1a); m.emissiveIntensity = 0; });
+  return { root, body, arms, gloveMaterials: [...new Set(gloveMaterials)] };
 }
 
 // The crowd merged into one boxer: the player's gummy body plus red gloves it can swing.

@@ -7,7 +7,7 @@ import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './
 import { createCoin } from './art/models.js';
 import { bossForLevel } from './bosses.js';
 import {
-  applyGate, bonusMultiplier, bossPunchDamage, championStats, chestReward, chooseGate, clashRate, clashStep,
+  applyGate, bonusMultiplier, championStats, isBlocked, isCounter, strikeDamage, chestReward, chooseGate, clashRate, clashStep,
   comboStep, crossesObstacle, pressesButton, rewardCoins, sliderX, startBlobsFor, upgradeCost,
 } from './rules.js';
 import { loadSave, writeSave } from './save.js';
@@ -354,7 +354,8 @@ export class Game {
     const stats = championStats(player.count, this.save.upgrades.damage);
     this.fight = {
       ...stats, maxHp: stats.hp, bossHp: this.level.boss.hp, bossMaxHp: this.level.boss.hp,
-      bossTimer: this.boss.attack.interval + 0.8, combo: 0, lastTap: -10, jumping: false,
+      bossTimer: CONFIG.boxing.firstAttackDelay, windupStart: Infinity, lastBlock: -10,
+      combo: 0, lastTap: -10, jumping: false,
       flinch: 0, bossFlinch: 0, slam: 0, nextGlove: 0, nextBossArm: 0,
     };
     const spot = this.championSpot();
@@ -397,13 +398,26 @@ export class Game {
     if (this.time - f.lastTap < CONFIG.boxing.tapCooldown) return;
     const step = comboStep(f, this.time);
     Object.assign(f, { combo: step.combo, lastTap: step.lastTap });
+    if (isCounter(this.time, f.lastBlock)) {
+      f.lastBlock = -10; // one counter per block
+      this.hud.popText('COUNTER!');
+      this.sound.play('counter');
+      this.haptics.pulse(25);
+      return this.jabWith(CONFIG.boxing.counterMultiplier, { stars: 5, scale: 1.1 });
+    }
     if (step.finisher && !f.jumping) return this.jumpPunch(step.multiplier);
+    // A finisher landing mid-jump is just a jab: no 2.5x without the jump punch animation.
+    this.jabWith(1, { stars: 2, scale: 0.7 });
+  }
+
+  jabWith(multiplier, impact) {
+    const f = this.fight;
     const glove = this.champion.gloves[f.nextGlove];
     f.nextGlove = 1 - f.nextGlove;
     glove.userData.punch = 1;
     this.sound.play('jab');
     this.haptics.pulse(10);
-    this.hitBoss(f.punch * step.multiplier, { stars: 2, scale: 0.7 });
+    this.hitBoss(f.punch * multiplier, impact);
   }
 
   // Flying "superman" punch: leap at the boss with both gloves forward, land back in place.
@@ -451,13 +465,18 @@ export class Game {
     const f = this.fight;
     const { attack } = this.boss;
     f.bossTimer -= dt;
+    if (f.bossTimer <= attack.windup && f.windupStart === Infinity) {
+      f.windupStart = this.time; // the cue: glove glows, "BLOCK!" prompt, rising whine
+      this.sound.play('windup');
+      this.hud.setFightPrompt('block');
+    }
     if (f.bossTimer > 0) return;
     f.bossTimer = attack.interval;
-    const damage = bossPunchDamage(f.maxHp, attack);
-    if (attack.move === 'slam') return this.bossSlam(damage);
+    if (attack.move === 'slam') return this.bossSlam();
     const gap = attack.move === 'flurry' ? 0.15 : 0.22;
     for (let i = 0; i < attack.strikes; i++) {
-      this.effects.tween(i * gap, () => {}, () => this.bossStrike(damage, attack.move === 'heavy' ? 1.6 : 1));
+      const last = i === attack.strikes - 1;
+      this.effects.tween(i * gap, () => {}, () => this.bossStrike(attack.move === 'heavy' ? 1.6 : 1, last));
     }
   }
 
@@ -468,17 +487,34 @@ export class Game {
     return THREE.MathUtils.clamp(1 - f.bossTimer / this.boss.attack.windup, 0, 1);
   }
 
-  bossStrike(damage, weight = 1) {
+  // A strike is blocked if the player stopped tapping before the wind-up began.
+  // `endsAttack` closes the block window after the last strike of a combo.
+  bossStrike(weight = 1, endsAttack = true) {
     const f = this.fight;
     if (this.state !== 'boxing') return;
     const arm = this.view.boss.arms[f.nextBossArm];
     f.nextBossArm = 1 - f.nextBossArm;
     arm.userData.strike = 1;
-    f.hp = Math.max(0, f.hp - damage);
+    const blocked = isBlocked(f.lastTap, f.windupStart);
+    if (endsAttack) {
+      f.windupStart = Infinity;
+      this.hud.setFightPrompt('tap');
+    }
+    f.hp = Math.max(0, f.hp - strikeDamage(f.maxHp, this.boss.attack, blocked));
+    const at = this.champion.root.position.clone().setY(1.6 * this.championScale / 2 + 0.6);
+    if (blocked) {
+      // The counter window opens only once the whole attack is over (a flurry has 3 strikes).
+      if (endsAttack) f.lastBlock = this.time;
+      this.hud.popText('BLOCK!');
+      this.sound.play('block');
+      this.haptics.pulse(15);
+      this.effects.impact(at, { stars: 2, scale: 0.6 });
+      this.effects.shake = 0.15;
+      return;
+    }
     this.sound.play('hurt');
     this.haptics.pulse(40);
     f.flinch = 1;
-    const at = this.champion.root.position.clone().setY(1.6 * this.championScale / 2 + 0.6);
     this.effects.impact(at, { stars: Math.round(3 * weight), scale: 0.8 * weight });
     this.effects.burst(at, PALETTE.player.splat, { count: Math.round(8 * weight), speed: 7, size: 0.2 });
     this.effects.splat(at.x + (Math.random() - 0.5) * 2, at.z + (Math.random() - 0.5) * 2, PALETTE.player.splat, 1.4, 0.3);
@@ -487,7 +523,7 @@ export class Game {
   }
 
   // Viking special: hop and smash the ring; the shockwave hits the champion.
-  bossSlam(damage) {
+  bossSlam() {
     const boss = this.view.boss.root;
     const baseY = boss.position.y;
     this.effects.tween(0.45, (k) => { boss.position.y = baseY + Math.sin(k * Math.PI) * 2.2; }, () => {
@@ -495,7 +531,7 @@ export class Game {
       this.effects.dustRing(boss.position.clone().setY(0.5), 3);
       this.sound.play('slam');
       this.effects.shake = 1;
-      this.bossStrike(damage, 1.4);
+      this.bossStrike(1.4);
     });
   }
 
@@ -615,6 +651,9 @@ export class Game {
     const base = body.userData.baseScale ??= body.scale.clone();
     body.scale.set(base.x * (1 + crouch * 0.5), base.y * (1 - crouch + Math.sin(this.time * (boxing ? 8 : 3)) * 0.03), base.z);
     body.rotation.x = f ? -f.bossFlinch * 0.18 + (move === 'heavy' ? -windup * 0.2 : 0) : 0;
+    // Telegraph: the boss's gloves glow red through the wind-up.
+    const glow = windup > 0 ? 0.6 + Math.sin(this.time * 30) * 0.4 : 0;
+    this.view.boss.gloveMaterials.forEach((m) => { m.emissiveIntensity = glow; });
     arms.forEach((arm, i) => {
       arm.userData.strike = Math.max(0, (arm.userData.strike ?? 0) - dt * 4);
       const guard = boxing ? 0.7 + Math.sin(this.time * 6 + i * Math.PI) * 0.12 : 0.25;
@@ -629,11 +668,15 @@ export class Game {
     if (!this.champion.root.visible || !f) return;
     f.flinch = Math.max(0, f.flinch - dt * 4);
     if (!f.jumping) this.champion.body.rotation.x = -f.flinch * 0.3; // knocked back
+    // Guard up while the player holds off during a wind-up: shows the block is working.
+    const guarding = this.windup() > 0 && isBlocked(f.lastTap, f.windupStart);
+    f.guard = THREE.MathUtils.damp(f.guard ?? 0, guarding ? 1 : 0, 18, dt);
     this.champion.gloves.forEach((glove, i) => {
       if (!f.jumping) glove.userData.punch = Math.max(0, (glove.userData.punch ?? 0) - dt * 7);
       glove.position.copy(glove.userData.rest);
-      glove.position.z += glove.userData.punch * 0.9;
-      glove.position.y += Math.sin(this.time * 7 + i * Math.PI) * 0.05;
+      glove.position.z += glove.userData.punch * 0.9 - f.guard * 0.15;
+      glove.position.x *= 1 - f.guard * 0.55;
+      glove.position.y += Math.sin(this.time * 7 + i * Math.PI) * 0.05 + f.guard * 0.45;
     });
   }
 

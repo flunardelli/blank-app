@@ -170,6 +170,14 @@ const RECIPES = {
     s.tone({ freq: 220, to: 90, type: 'sawtooth', dur: 0.18, vol: 0.16 });
     s.noise({ dur: 0.12, vol: 0.2, filter: 900 });
   },
+  block: (s) => {
+    s.tone({ freq: 900, to: 700, type: 'square', dur: 0.08, vol: 0.12 });
+    s.noise({ dur: 0.1, vol: 0.2, filter: 5000, type: 'highpass' });
+  },
+  counter: (s) => {
+    [0, 7, 12].forEach((n, i) => s.tone({ freq: NOTE(n + 12), type: 'square', at: i * 0.04, dur: 0.12, vol: 0.1 }));
+    s.noise({ at: 0.05, dur: 0.15, vol: 0.4, filter: 2500, sweepTo: 300 });
+  },
   windup: (s) => s.tone({ freq: 200, to: 420, type: 'triangle', dur: 0.3, vol: 0.08 }),
   slam: (s) => {
     s.tone({ freq: 90, to: 30, type: 'sine', dur: 0.5, vol: 0.6 });

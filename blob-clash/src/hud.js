@@ -17,6 +17,7 @@ export class Hud {
     this.fight = $('fight');
     this.hpPlayer = $('hp-player');
     this.hpBoss = $('hp-boss');
+    this.fightPrompt = $('fight-prompt');
     this.pauseButton = $('pause-button');
     this.settingsButton = $('settings-button');
     this.pauseScreen = $('pause');
@@ -62,7 +63,16 @@ export class Hud {
     this.keySlots.forEach((slot, i) => slot.classList.toggle('filled', i < count));
   }
 
+  // Fight coaching line: "TAP TO FIGHT!" normally, "BLOCK! STOP TAPPING" during a wind-up.
+  setFightPrompt(mode) {
+    const block = mode === 'block';
+    this.fightPrompt.textContent = block ? 'STOP TAPPING TO BLOCK!' : 'TAP TO FIGHT!';
+    this.fightPrompt.classList.toggle('warn', block);
+    this.fight.querySelector('.tap-hand').hidden = block;
+  }
+
   showFight(visible, bossColor = 0x6fe04a) {
+    this.setFightPrompt('tap');
     this.fight.hidden = !visible;
     this.fight.style.setProperty('--boss-color', `#${bossColor.toString(16).padStart(6, '0')}`);
     this.topbar.classList.toggle('fighting', visible);

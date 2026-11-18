@@ -34,11 +34,13 @@ test('level data is well formed', () => {
 
 test('with the best crowd the boss needs a humane tapping speed, and gets harder', () => {
   const rates = [1, 5, 10, 20].map((n) => {
-    const { boss, bestCount } = generateLevel(n);
-    const rate = requiredTapRate(bestCount, boss.hp, 1);
-    assert.ok(rate <= 6, `level ${n}: needs ${rate.toFixed(1)} taps/s`);
+    // A typical player: the upgrades the economy expects at this level, 60% of the best crowd.
+    const { boss, bestCount, expected } = generateLevel(n);
+    const rate = requiredTapRate(bestCount * 0.6, boss.hp, expected.damage);
+    // Plain jabs only: combos, counters and blocking make the real fight easier than this.
+    assert.ok(rate <= 8, `level ${n}: needs ${rate.toFixed(1)} taps/s`);
     return rate;
   });
   assert.ok(rates[0] < rates[3]);
-  assert.ok(rates[0] <= 3, 'level 1 is gentle');
+  assert.ok(rates[0] <= 3.5, 'level 1 is gentle');
 });

@@ -1,7 +1,8 @@
 // Procedural, seeded level generator. Output is plain data; levelView.js renders it.
 import { CONFIG } from './config.js';
 import { createRng } from './rng.js';
-import { applyGate, bestGate, bossDifficulty } from './rules.js';
+import { expectedUpgrades } from './economy.js';
+import { applyGate, bestGate, bossDifficulty, damageFor, startBlobsFor } from './rules.js';
 
 function goodGate(rng, level, cfg) {
   return rng.chance(0.4)
@@ -68,8 +69,10 @@ export function generateLevel(level, cfg = CONFIG) {
   const obstacles = [];
   const coins = [];
   const enemies = [];
-  // Best reachable crowd with a fresh (non-upgraded) start and perfect gate choices.
-  let bestCount = 1;
+  // Best reachable crowd with perfect gate choices, starting from the upgrades a typical
+  // player owns at this level (see economy.js), so the boss is sized for that player.
+  const expected = expectedUpgrades(level);
+  let bestCount = startBlobsFor(expected.blobs, cfg.upgrades);
   let d = track.introLength;
 
   for (let s = 0; s < segments; s++, d += track.segmentLength) {
@@ -101,7 +104,11 @@ export function generateLevel(level, cfg = CONFIG) {
     key,
     enemies: enemies.map((e, id) => ({ ...e, id })),
     finishD,
-    boss: { d: bossD, hp: Math.max(5, Math.round(bestCount * bossDifficulty(level, cfg.boss))) },
+    boss: {
+      d: bossD,
+      hp: Math.max(5, Math.round(bestCount * bossDifficulty(level, cfg.boss) * damageFor(expected.damage, cfg.upgrades))),
+    },
+    expected,
     ladderStart: finishD + cfg.boss.ringDepth + 1,
     bestCount,
   };
