@@ -14,6 +14,7 @@ export const defaultSave = () => ({
   keys: 0,
   upgrades: { damage: 1, blobs: 1 },
   skins: defaultSkins(),
+  seen: [], // hazards the player has already been coached on (one hint each, ever)
 });
 
 export function starsFor(multiplier, [oneStarUpTo, twoStarsUpTo] = CONFIG.campaign.starsAt) {
@@ -85,5 +86,6 @@ export function normalizeSave(raw, levels = LEVEL_COUNT) {
       blobs: Math.max(1, count(raw.upgrades?.blobs)),
     },
     skins: normalizeSkins(raw.skins), // saves from before skins existed just get the default
+    seen: Array.isArray(raw.seen) ? raw.seen.filter((id) => typeof id === 'string') : [],
   };
 }

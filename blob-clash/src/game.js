@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { CONFIG, PALETTE } from './config.js';
 import { Effects } from './effects.js';
 import { generateLevel } from './level.js';
+import { HINTS } from './hud.js';
 import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './levelView.js';
 import { clipDuration } from './anim.js';
 import { AnimPlayer, clipLibrary } from './animPlayer.js';
@@ -28,6 +29,8 @@ import { mapRows } from './map.js';
 import { LEVEL_COUNT, levelInfo, worldForLevel } from './worlds.js';
 import { loadSave, resetSave, writeSave } from './save.js';
 
+const HINT_LEAD = 22; // metres ahead a first-time hazard gets its coaching line
+const HINT_GAP = 3.5; // seconds between two coaching lines, so they never pile up
 const ENEMY_DRAW_DISTANCE = 130; // the fog is opaque from 170 m, and the camera sits ~10 m back
 import { Cooldown } from './emoji.js';
 
@@ -139,6 +142,7 @@ export class Game {
     this.remainingCoins = [...this.level.coins];
     this.runCoins = 0;
     this.keyTaken = false;
+    this.deathCause = null;
     this.fight = null;
     this.chestStage = null;
     this.stageCoins = 0;
@@ -234,6 +238,7 @@ export class Game {
     player.center.d += CONFIG.crowd.forwardSpeed * dt;
     player.center.x = THREE.MathUtils.clamp(player.center.x + this.input.consumeLateral(dt, CONFIG.crowd), -maxX, maxX);
 
+    this.coachFirstEncounters();
     this.checkGates();
     this.checkPickups();
     this.checkButtons();
@@ -257,6 +262,24 @@ export class Game {
     this.hud.showEmoji(face, bubbleAnchor, this.world.camera);
   }
 
+  // The first time a player meets each hazard, one line of coaching (once per player, saved).
+  coachFirstEncounters() {
+    const ahead = (d) => d > this.player.center.d && d - this.player.center.d < HINT_LEAD;
+    const upcoming = [
+      ...this.view.obstacles.filter(({ obstacle }) => ahead(obstacle.d)).map(({ obstacle }) => obstacle.kind),
+      ...this.view.walkers.filter(({ walker }) => ahead(walker.d)).map(() => 'walker'),
+      ...this.view.recruits.filter(({ recruit }) => ahead(recruit.d)).map(() => 'recruit'),
+      ...this.view.enemies.filter(({ enemy }) => ahead(enemy.d)).map(() => 'enemy'),
+      ...(this.view.gates.length && ahead(this.view.gates[0].pair.d) ? ['gate'] : []),
+    ];
+    const fresh = upcoming.find((id) => !this.save.seen.includes(id) && HINTS[id]);
+    if (!fresh || this.time - (this.lastHintAt ?? -10) < HINT_GAP) return;
+    this.lastHintAt = this.time;
+    this.save.seen.push(fresh);
+    writeSave(this.save);
+    this.hud.showHint(fresh);
+  }
+
   checkGates() {
     const gate = this.view.gates[this.nextGate];
     if (!gate || this.player.center.d < gate.pair.d) return;
@@ -268,6 +291,7 @@ export class Game {
       this.audio.play('goodGate');
       this.say('good', CONFIG.emoji.goodGate);
     } else {
+      this.deathCause = 'gate';
       this.audio.play('badGate');
       this.say('loss', CONFIG.emoji.loss);
     }
@@ -318,7 +342,10 @@ export class Game {
       this.keyTaken = true;
       this.audio.play('key');
       this.collectAnimation(this.view.key);
-      this.hud.setKeys(Math.min(CONFIG.keys.perChest, this.save.keys + 1));
+      // Saved at once: a key is never lost because the level was.
+      this.save.keys = Math.min(CONFIG.keys.perChest, this.save.keys + 1);
+      writeSave(this.save);
+      this.hud.setKeys(this.save.keys);
     }
   }
 
@@ -352,8 +379,9 @@ export class Game {
   }
 
   /** Kills visible bodies by index; hidden ones (count > maxVisible) die with the same share. */
-  killUnits(indices, { shake = 0.4 } = {}) {
+  killUnits(indices, { shake = 0.4, cause } = {}) {
     const { player } = this;
+    if (cause) this.deathCause = cause;
     const hidden = player.count - player.units.length;
     const hiddenLosses = Math.round(hidden * (indices.length / player.units.length));
     player.kill(indices).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
@@ -388,11 +416,16 @@ export class Game {
     // Each body is tested once, when it crosses the obstacle line. Testing overlap every frame
     // would wipe the crowd: survivors re-pack into the dead bodies' slots, right on the spikes.
     const hits = [];
+    let cause;
     this.player.units.forEach((u, i) => {
       if (!this.grounded(u)) return;
-      if (near.some(({ obstacle }) => crossesObstacle(obstacle, this.time, u.x, u.prevD, u.d, unitRadius))) hits.push(i);
+      const hit = near.find(({ obstacle }) => crossesObstacle(obstacle, this.time, u.x, u.prevD, u.d, unitRadius));
+      if (hit) {
+        hits.push(i);
+        cause = hit.obstacle.kind;
+      }
     });
-    if (hits.length) this.killUnits(hits);
+    if (hits.length) this.killUnits(hits, { cause });
   }
 
   // A rolling ball moves, so there is no line to cross: it crushes every grounded body it overlaps.
@@ -404,7 +437,7 @@ export class Game {
     this.player.units.forEach((u, i) => {
       if (this.grounded(u) && balls.some(({ obstacle }) => obstacleHits(obstacle, this.time, u.x, u.d, unitRadius))) hits.push(i);
     });
-    if (hits.length) this.killUnits(hits, { shake: 0.6 });
+    if (hits.length) this.killUnits(hits, { shake: 0.6, cause: 'ball' });
   }
 
   // A bomb goes off when any blob touches it and takes every grounded blob in its blast.
@@ -422,7 +455,7 @@ export class Game {
       this.effects.burst(at, PALETTE.bomb, { count: 8, speed: 7, size: 0.18 });
       this.effects.dustRing(at.clone().setY(0.3), obstacle.blast);
       const victims = blastVictims(obstacle, grounded.map(({ u }) => u)).map((k) => grounded[k].i);
-      if (victims.length) this.killUnits(victims, { shake: 0.8 });
+      if (victims.length) this.killUnits(victims, { shake: 0.8, cause: 'bomb' });
       else this.effects.shake = Math.max(this.effects.shake, 0.6);
       return; // indices are stale after a kill; any other bomb waits for the next frame
     }
@@ -447,7 +480,7 @@ export class Game {
         .sort((a, b) => a.dist - b.dist)
         .slice(0, walker.strength)
         .map(({ i }) => i);
-      this.killUnits(nearest, { shake: 0.25 * walker.strength });
+      this.killUnits(nearest, { shake: 0.25 * walker.strength, cause: 'walker' });
       return; // indices are stale after a kill
     }
   }
@@ -486,6 +519,7 @@ export class Game {
     const { player } = this;
     const enemy = s.target.crowd;
     [s.a, s.b] = clashStep(s.a, s.b, s.rate, dt);
+    this.deathCause = 'enemy';
     player.setCount(Math.ceil(s.a)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
     enemy.setCount(Math.ceil(s.b)).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.enemy.bits));
     // Both crowds lean into each other.
@@ -758,6 +792,7 @@ export class Game {
   }
 
   championDown() {
+    this.deathCause = 'boss';
     setGlow(this.view.boss, 0);
     this.hud.showFight(false);
     const { position } = this.champion.root;
@@ -837,7 +872,6 @@ export class Game {
     this.audio.play('win');
     const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
     let chest = this.stageCoins;
-    if (this.keyTaken) this.save.keys += 1;
     if (this.save.keys >= CONFIG.keys.perChest) {
       chest += chestReward(this.level.level);
       this.save.keys = 0;
@@ -871,12 +905,12 @@ export class Game {
     this.audio.stopMusic();
     this.audio.play('lose');
     this.player.setCount(0).forEach(({ x, d }) => this.effects.pop(x, toZ(d), PALETTE.player.bits));
-    this.save.coins += this.runCoins; // keys only count on a win
+    this.save.coins += this.runCoins;
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
     this.hud.setKeys(this.save.keys);
     const showLose = () => this.hud.showLose({
-      coins: this.runCoins, onContinue: () => this.loadLevel(this.level.level),
+      coins: this.runCoins, cause: this.deathCause, onContinue: () => this.loadLevel(this.level.level),
     });
     if (dance && this.view.boss) this.later(0.5, () => this.celebrate(this.view.boss, this.bossAnim, danceFor(this.boss.id), showLose));
     else this.later(0.8, showLose);

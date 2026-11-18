@@ -179,7 +179,8 @@ test('balls come from world 4 on and never fill all three lanes at the same time
 });
 
 test('hazards unlock gradually and every world features its own kind', () => {
-  assert.deepEqual(Object.keys(hazardWeights(1)).sort(), ['slider', 'spikes', 'trap']);
+  assert.deepEqual(Object.keys(hazardWeights(1)), ['slider'], 'level 1: only its world\'s sliders');
+  assert.ok(!('trap' in hazardWeights(3)) && 'trap' in hazardWeights(4), 'the instant-kill trap waits for world 2');
   assert.ok('saw' in hazardWeights(2) && !('bombs' in hazardWeights(2)));
   assert.ok('bombs' in hazardWeights(3));
   const featured = (level) => Object.entries(hazardWeights(level)).sort((a, b) => b[1] - a[1])[0][0];

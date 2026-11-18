@@ -95,7 +95,8 @@ export const CONFIG = {
     // (weight × featuredBoost), so neighbouring worlds feel different.
     weights: { slider: 0.4, spikes: 0.3, trap: 0.3, saw: 0.35, jump: 0.3, bombs: 0.35, axe: 0.35, ball: 0.35, pillars: 0.3, pusher: 0.3 },
     // First level of a world: axe world 3, ball world 4, pillars world 5, pusher world 6. One new hazard per world.
-    unlockLevel: { slider: 1, spikes: 1, trap: 1, saw: 2, jump: 2, bombs: 3, axe: 7, ball: 10, pillars: 13, pusher: 16 },
+    // Level 1 only has its world's sliders; spikes follow, and the instant-kill trap waits for world 2.
+    unlockLevel: { slider: 1, spikes: 2, trap: 4, saw: 2, jump: 2, bombs: 3, axe: 7, ball: 10, pillars: 13, pusher: 16 },
     featuredBoost: 3,
     spikeHalfDepth: 1.1,
     // Spike pads hug the track edges (like the reference): [centre x, half width] per pad.
