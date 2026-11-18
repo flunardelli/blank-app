@@ -17,6 +17,10 @@ const HINTS = {
   bridge: 'Stay in the middle!',
 };
 
+export const HAT_NAMES = {
+  party: '🎉 Party', football: '🏈 Rookie', spartan: '🏛️ Spartan', crown: '👑 King', viking: '🐂 Viking', mohawk: '🎸 Punk',
+};
+
 // Why the run ended, and what to do about it.
 const LOSE_TIPS = {
   trap: 'Step on the green button to lower the spikes.',
@@ -35,7 +39,8 @@ export class Hud {
     this.topbar = $('topbar');
     this.progress = $('progress-fill');
     this.bubbles = $('bubbles');
-    this.screens = { menu: $('menu'), complete: $('complete'), lose: $('lose') };
+    this.screens = { menu: $('menu'), complete: $('complete'), lose: $('lose'), chests: $('chests'), wardrobe: $('wardrobe') };
+    this.hatsButton = $('hats-button');
     this.keySlots = [...document.querySelectorAll('.key-slot')];
     this.levelBadge = $('level-badge');
     this.fight = $('fight');
@@ -74,9 +79,49 @@ export class Hud {
     this.pauseScreen.hidden = true;
   }
 
-  setControls({ pause, settings }) {
+  setControls({ pause, settings, hats }) {
     this.pauseButton.hidden = !pause;
     this.settingsButton.hidden = !settings;
+    this.hatsButton.hidden = !hats;
+  }
+
+  // Chest room: tap a chest to spend a key; `onOpen(i)` returns its prize.
+  showChestRoom({ keys, prizes, onOpen, onDone }) {
+    let left = keys;
+    const best = prizes.find((p) => p.hat);
+    $('chest-best').textContent = best ? `Best prize: ${HAT_NAMES[best.hat]}` : '';
+    const renderKeys = () => { $('chest-keys').textContent = '🔑'.repeat(left) || ' '; };
+    renderKeys();
+    $('chest-grid').replaceChildren(...prizes.map((_, i) => {
+      const chest = Object.assign(document.createElement('button'), { className: 'chest', textContent: '🎁' });
+      chest.onclick = () => {
+        if (left <= 0 || chest.classList.contains('opened')) return;
+        left -= 1;
+        renderKeys();
+        const prize = onOpen(i);
+        chest.classList.add('opened');
+        if (prize.hat) chest.classList.add('hat');
+        chest.textContent = prize.hat ? HAT_NAMES[prize.hat] : `+${prize.coins} 🪙`;
+        $('chest-continue').textContent = left ? 'SKIP' : 'CONTINUE';
+      };
+      return chest;
+    }));
+    $('chest-continue').textContent = 'SKIP';
+    $('chest-continue').onclick = onDone;
+    this.show('chests');
+  }
+
+  showWardrobe({ owned, equipped, onEquip, onClose }) {
+    const render = (current) => $('wardrobe-grid').replaceChildren(...[null, ...owned].map((id) => {
+      const tile = Object.assign(document.createElement('button'), {
+        className: `chest opened${id === current ? ' equipped' : ''}`, textContent: id ? HAT_NAMES[id] : 'No hat',
+      });
+      tile.onclick = () => { onEquip(id); render(id); };
+      return tile;
+    }));
+    render(equipped);
+    $('wardrobe-close').onclick = onClose;
+    this.show('wardrobe');
   }
 
   setLevel(level) {
@@ -200,7 +245,7 @@ export class Hud {
   showComplete({ level, coins, multiplier, chest, onNext }) {
     $('complete-level').textContent = `Level ${level}`;
     $('complete-chest').hidden = !chest;
-    $('complete-chest').querySelector('span').textContent = `Chest +${chest}`;
+    $('complete-chest').querySelector('span').textContent = '3 keys: CHEST ROOM!';
     $('complete-coins').textContent = coins;
     $('complete-multiplier').textContent = `x${multiplier.toFixed(1)}`;
     $('complete-next').onclick = onNext;

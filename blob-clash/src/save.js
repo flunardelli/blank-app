@@ -3,6 +3,8 @@ const KEY = 'blob-clash.save.v2';
 const DEFAULTS = {
   level: 1, coins: 0, keys: 0, upgrades: { damage: 1, blobs: 1 },
   settings: { sound: true, music: true, vibration: true },
+  hats: [],
+  hat: null,
 };
 
 export function loadSave() {

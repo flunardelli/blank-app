@@ -211,6 +211,23 @@ const HEADGEAR = {
   },
 };
 
+// Party hat: the one cosmetic that isn't a boss trophy.
+HEADGEAR.party = () => {
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.42, 20), glossy(0xffc83d));
+  hat.position.set(0.05, 1.62, 0);
+  hat.rotation.z = -0.25;
+  return hat;
+};
+
+/** A hat for the player's champion: the boss headgear builders, fitted to the champion's head. */
+export function createHat(id) {
+  const hat = HEADGEAR[id]();
+  hat.position.y -= 0.2;
+  hat.scale.multiplyScalar(0.95);
+  hat.traverse((o) => { o.castShadow = true; });
+  return hat;
+}
+
 /** Builds a boss from a roster entry (see bosses.js). */
 export function createBoss({ colors, glove: gloveColor, headgear, body: [width, height] }) {
   const root = new THREE.Group();
@@ -267,7 +284,14 @@ export function createChampion(geometry, material) {
     root.add(g);
     return g;
   });
-  return { root, body, gloves };
+  // Hat slot rides on the body so the hat leans and flinches with it.
+  const hatSlot = new THREE.Group();
+  body.add(hatSlot);
+  const setHat = (id) => {
+    hatSlot.clear();
+    if (id) hatSlot.add(createHat(id));
+  };
+  return { root, body, gloves, setHat };
 }
 
 // ---- Obstacles ------------------------------------------------------------------

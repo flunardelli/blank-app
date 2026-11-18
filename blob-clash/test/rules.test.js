@@ -137,3 +137,16 @@ test('not tapping through the wind-up blocks; a quick tap after a block counters
   assert.ok(isCounter(6.3, 6, cfg));
   assert.ok(!isCounter(6.5, 6, cfg));
 });
+
+test('chest room: nine prizes, one unowned hat while any are left, coins otherwise', async () => {
+  const { rollChestRoom } = await import('../src/rules.js');
+  const { CONFIG } = await import('../src/config.js');
+  const prizes = rollChestRoom(42, 5, ['party']);
+  assert.equal(prizes.length, 9);
+  const hats = prizes.filter((p) => p.hat);
+  assert.equal(hats.length, 1);
+  assert.notEqual(hats[0].hat, 'party');
+  assert.ok(prizes.filter((p) => p.coins).every((p) => p.coins > 0));
+  assert.deepEqual(rollChestRoom(42, 5, ['party']), prizes, 'seeded: a reload shows the same chests');
+  assert.ok(rollChestRoom(42, 5, CONFIG.hats).every((p) => p.coins), 'all hats owned: coins only');
+});

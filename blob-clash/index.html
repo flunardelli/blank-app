@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#62c6ff">
   <title>Blob Clash 3D</title>
+  <meta name="description" content="Grow your gummy crowd, dodge traps and box the boss.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preload" href="vendor/fonts/fredoka-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
   <script type="importmap">
@@ -18,6 +25,8 @@
 </head>
 <body>
   <canvas id="scene"></canvas>
+  <div id="loading"><div class="logo ink">BLOB<br><span>CLASH</span></div><div class="spinner"></div><p id="loading-error"></p></div>
+  <div id="rotate" class="ink">📱 Turn your phone upright</div>
   <div id="bubbles"></div>
 
   <header id="topbar">
@@ -43,6 +52,21 @@
 
   <button id="pause-button" class="round-btn" aria-label="Pause" hidden>❚❚</button>
   <button id="settings-button" class="round-btn" aria-label="Settings" hidden>☰</button>
+  <button id="hats-button" class="round-btn" aria-label="Hats" hidden>🎩</button>
+
+  <section id="chests" class="screen dim" hidden>
+    <h1 class="ink title">CHEST ROOM</h1>
+    <div id="chest-keys" class="chest-keys"></div>
+    <div id="chest-grid" class="chest-grid"></div>
+    <p id="chest-best" class="tip"></p>
+    <button id="chest-continue" class="btn cyan ink">CONTINUE</button>
+  </section>
+
+  <section id="wardrobe" class="screen dim" hidden>
+    <h1 class="ink title">HATS</h1>
+    <div id="wardrobe-grid" class="chest-grid"></div>
+    <button id="wardrobe-close" class="btn cyan ink">OK</button>
+  </section>
 
   <section id="pause" class="screen dim" hidden>
     <h1 id="pause-title" class="ink title">PAUSED</h1>

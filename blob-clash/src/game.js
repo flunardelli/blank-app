@@ -7,10 +7,12 @@ import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './
 import { createCoin } from './art/models.js';
 import { bossForLevel } from './bosses.js';
 import {
-  applyGate, bridgeAt, fallsOffBridge, gateLabel, bonusMultiplier, championStats, isBlocked, isCounter, strikeDamage, chestReward, chooseGate, clashRate, clashStep,
-  comboStep, crossesObstacle, pressesButton, rewardCoins, sliderX, startBlobsFor, upgradeCost,
+  applyGate, bonusMultiplier, bridgeAt, championStats, chooseGate, clashRate, clashStep, comboStep, crossesObstacle,
+  fallsOffBridge, gateLabel, isBlocked, isCounter, pressesButton, rewardCoins, rollChestRoom, sliderX, startBlobsFor,
+  strikeDamage, upgradeCost,
 } from './rules.js';
 import { loadSave, writeSave } from './save.js';
+import { track } from './analytics.js';
 
 const UPGRADES = [
   { id: 'damage', title: 'Damage', icon: '🥊' },
@@ -43,6 +45,8 @@ export class Game {
     this.applySettings();
     hud.pauseButton.onclick = () => this.pause('PAUSED');
     hud.settingsButton.onclick = () => this.pause('SETTINGS');
+    hud.hatsButton.onclick = () => this.openWardrobe();
+    this.champion.setHat(this.save.hat);
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         if (ACTIVE_STATES.has(this.state)) this.pause('PAUSED');
@@ -52,7 +56,7 @@ export class Game {
       }
     });
     input.onPress(() => {
-      if (this.paused) return;
+      if (this.paused || this.overlay) return;
       if (this.state === 'menu') this.start();
       else if (this.state === 'boxing') this.championPunch();
     });
@@ -116,6 +120,7 @@ export class Game {
     if (this.state !== 'menu' || this.save.coins < cost) return;
     this.save.coins -= cost;
     this.save.upgrades[id] += 1;
+    track('upgrade_buy', { id, level: this.save.upgrades[id], cost });
     this.sound.play('buy');
     this.haptics.pulse(15);
     writeSave(this.save);
@@ -130,6 +135,8 @@ export class Game {
     this.hud.hideScreens();
     this.sound.play('tap');
     this.sound.startMusic();
+    this.runStart = this.time;
+    track('level_start', { level: this.level.level, crowd: this.player.count });
   }
 
   // ---- Pause & settings ------------------------------------------------------------
@@ -171,7 +178,12 @@ export class Game {
 
   // ---- Frame update -------------------------------------------------------------
   update(dt) {
-    this.hud.setControls({ pause: ACTIVE_STATES.has(this.state) && !this.paused, settings: this.state === 'menu' && !this.paused });
+    const inMenu = this.state === 'menu' && !this.paused && !this.overlay;
+    this.hud.setControls({
+      pause: ACTIVE_STATES.has(this.state) && !this.paused,
+      settings: inMenu,
+      hats: inMenu && this.save.hats.length > 0,
+    });
     if (this.paused) return;
     if (this.slowMo > 0) {
       this.slowMo -= dt;
@@ -649,23 +661,74 @@ export class Game {
     this.state = 'complete';
     this.sound.play('win');
     const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
-    let chest = 0;
-    if (this.save.keys >= CONFIG.keys.perChest) {
-      chest = chestReward(this.level.level);
-      this.save.keys = 0;
-    }
-    this.save.coins += reward + chest;
+    const chestRoom = this.save.keys >= CONFIG.keys.perChest;
+    track('level_complete', {
+      level: this.level.level, multiplier: this.multiplier, reward, secs: Math.round(this.time - this.runStart),
+    });
+    this.save.coins += reward;
     this.save.level = this.level.level + 1;
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
     this.hud.setKeys(this.save.keys);
     this.hud.showComplete({
-      level: this.level.level, coins: reward, multiplier: this.multiplier, chest,
-      onNext: () => this.loadLevel(this.save.level),
+      level: this.level.level, coins: reward, multiplier: this.multiplier, chest: chestRoom,
+      onNext: () => (chestRoom ? this.openChestRoom() : this.loadLevel(this.save.level)),
+    });
+  }
+
+  // 3 keys: one chest per key, one of them hiding a hat the player doesn't own yet.
+  openChestRoom() {
+    const level = this.save.level - 1;
+    const prizes = rollChestRoom(level * 31 + 7, level, this.save.hats);
+    this.hud.showChestRoom({
+      keys: this.save.keys,
+      prizes,
+      onOpen: (i) => {
+        const prize = prizes[i];
+        this.save.keys -= 1;
+        if (prize.hat) {
+          this.save.hats.push(prize.hat);
+          this.save.hat = prize.hat; // wear the new hat straight away
+          this.champion.setHat(prize.hat);
+        } else {
+          this.save.coins += prize.coins;
+        }
+        writeSave(this.save);
+        this.hud.setCoins(this.save.coins);
+        this.hud.setKeys(this.save.keys);
+        this.sound.play('chest');
+        this.haptics.pulse(prize.hat ? [30, 30, 60] : 20);
+        track('chest_open', { level, prize: prize.hat ?? prize.coins });
+        return prize;
+      },
+      onDone: () => this.loadLevel(this.save.level),
+    });
+  }
+
+  openWardrobe() {
+    this.overlay = 'wardrobe';
+    this.sound.play('tap');
+    this.hud.showWardrobe({
+      owned: this.save.hats,
+      equipped: this.save.hat,
+      onEquip: (id) => {
+        this.save.hat = id;
+        this.champion.setHat(id);
+        writeSave(this.save);
+        this.sound.play('buy');
+      },
+      onClose: () => {
+        this.overlay = null;
+        this.showMenu();
+      },
     });
   }
 
   lose() {
+    track('level_fail', {
+      level: this.level.level, cause: this.deathCause, at: this.state,
+      progress: Math.round((this.player.center.d / this.level.finishD) * 100),
+    });
     this.state = 'lost';
     this.sound.play('lose');
     this.haptics.pulse([60, 40, 60]);
@@ -806,7 +869,8 @@ export class Game {
     }
     if (this.state === 'running') {
       for (const hint of this.level.hints) {
-        if (this.shownHints.has(hint) || player.center.d < hint.d - 6) continue;
+        // Only while the mechanic is just ahead: a hint for something already passed is noise.
+        if (this.shownHints.has(hint) || player.center.d < hint.d - 6 || player.center.d > hint.d + 12) continue;
         this.shownHints.add(hint);
         this.hud.showHint(hint.id);
       }

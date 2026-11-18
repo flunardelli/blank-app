@@ -1,5 +1,6 @@
 // Pure gameplay rules: no three.js, no DOM. Everything here is unit-tested.
 import { CONFIG } from './config.js';
+import { createRng } from './rng.js';
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -163,6 +164,23 @@ export function rewardCoins(collected, level, multiplier, { base, perLevel } = C
 
 export function chestReward(level, { chestCoinsPerLevel } = CONFIG.keys) {
   return chestCoinsPerLevel * (level + 4);
+}
+
+/**
+ * Prizes behind the chest room's chests for this visit: one hat the player doesn't own yet
+ * (if any are left), the rest coin amounts around chestReward(level). Seeded, so a reload
+ * shows the same chests.
+ */
+export function rollChestRoom(seed, level, ownedHats, cfg = CONFIG) {
+  const rng = createRng(seed);
+  const base = chestReward(level, cfg.keys);
+  const { count, coinMin, coinMax } = cfg.chests;
+  const prizes = Array.from({ length: count }, () => ({
+    coins: Math.round((base * (coinMin + rng.next() * (coinMax - coinMin))) / 10) * 10,
+  }));
+  const hats = cfg.hats.filter((h) => !ownedHats.includes(h));
+  if (hats.length) prizes[rng.int(0, count - 1)] = { hat: rng.pick(hats) };
+  return prizes;
 }
 
 export function upgradeCost(level, { baseCost, costGrowth } = CONFIG.upgrades) {

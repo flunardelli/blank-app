@@ -8,28 +8,19 @@ O three.js 0.169.0 está versionado em `vendor/three/` (licença MIT incluída),
 Todo push que altera `blob-clash/` roda os testes e republica no GitHub Pages (`.github/workflows/blob-clash-pages.yml`).
 
 ## Como jogar
-- Segure e arraste (ou ← → / A D) para mover sua **multidão de bonequinhos de gelatina**. O número no balão azul é o tamanho dela.
-- **Portões +N / ×N** aumentam a multidão; os vermelhos (−N / ÷N) diminuem. A metade que você atravessa vale.
-- **Obstáculos:** fatias de melancia e **luvas de boxe em mola** que entram pelas bordas, e espinhos nas laterais.
-- **Armadilha com botão:** espinhos na pista inteira. Pise no **botão verde** antes deles para recolhê-los, senão a multidão morre.
-- **Multidões vermelhas** bloqueiam a pista: os dois lados se anulam um a um.
-- **Moedas** na pista e **uma chave por fase**. Com 3 chaves, abre um **baú** de moedas.
-- **Boss:** a multidão se funde num campeão de luvas, que abre a luta com um **soco voador**.
-  **TAP TO FIGHT!**: cada toque é um jab; o 5º toque seguido vira **JUMP PUNCH** (2,5× de dano).
-  Multidão maior dá mais vida e soco mais forte; todo chefe derruba qualquer campeão em ~10 s, então é preciso tocar rápido.
-- **Um chefe por fase** (`src/bosses.js`, em ciclo), cada um com visual e golpe próprios:
+- Segure e arraste (ou ← → / A D) para mover sua **multidão de bonequinhos de gelatina**.
+- **Portões** +N / ×N aumentam a multidão, −N / ÷N diminuem. Os pares são dilemas de verdade: ×2 contra +15 depende de quantos você tem.
+- **Muro numerado** (`-15 → ×3`): o muro come bonequinhos antes de multiplicar. Vale a pena? Faça a conta.
+- **Obstáculos:** melancias e luvas de mola nas bordas, espinhos em zigue-zague, armadilha de largura total (pise no **botão verde**) e **ponte estreita** (fique no meio).
+- **Multidões vermelhas:** os dois lados se anulam um a um.
+- **Chefe (boxe com um dedo):** toque para socar, o 5º toque seguido é um **JUMP PUNCH**. Quando as luvas do chefe brilham, **pare de tocar** para bloquear, e toque logo depois para um **COUNTER** (3×).
+  A vida que sobrar decide o multiplicador de moedas (x1.0–x5.0).
+- **Chaves:** 3 chaves abrem o **quarto de baús** (9 baús, 1 por chave): moedas e **chapéus** para o campeão (troféus dos chefes). O botão 🎩 do menu troca o chapéu.
+- **Upgrades:** Damage e Blobs. Os chefes são dimensionados para os upgrades que um jogador típico tem naquela fase.
 
-  | Chefe | Visual | Golpe |
-  |---|---|---|
-  | ROOKIE | capacete de futebol americano | jab simples |
-  | SPARTAN | elmo grego com crista | golpe pesado, preparação longa |
-  | KING BLOB | coroa, corpo largo | soco duplo |
-  | VIKING | chifres | pula e esmaga o ringue (onda de poeira) |
-  | PUNK | moicano | sequência de 3 socos |
-
-  Golpes diferentes, mesmo dano médio por segundo (coberto por teste); adicionar um chefe é adicionar uma linha.
-- A vida que sobrar decide até onde o Boss voa na pista **x1.0 … x5.0**, que multiplica as moedas.
-- Moedas compram upgrades no menu: **Damage** (força do soco) e **Blobs** (tamanho inicial).
+### Progressão
+Cada mecânica estreia sozinha, com uma dica, em uma fase: melancias (2), espinhos (3), armadilha (4), muro (6), portão com risco (7), ponte (8).
+A dificuldade é em dente de serra: toda 5ª fase tem um chefe maior, e a seguinte é um respiro.
 
 ## Rodando
 ES modules não funcionam via `file://`, então sirva a pasta por HTTP:
@@ -46,22 +37,34 @@ Testes (Node 18+): `npm test`
 
 | Módulo | Responsabilidade | three.js? |
 |---|---|---|
-| `src/config.js` | Todos os números ajustáveis e a paleta de cores | não |
+| `src/config.js` | Todos os números ajustáveis, paleta, desbloqueios | não |
+| `src/rules.js` | Regras puras: portões, formação, colisões, ponte, boxe (bloqueio/counter), economia, baús | não |
+| `src/level.js` | Gerador de fases por **blocos** (gate, gateRisk, wall, enemy, slider, spikes, trap, bridge) | não |
+| `src/economy.js` | Curva de poder esperada (upgrades de um jogador típico por fase) | não |
 | `src/bosses.js` | Elenco de chefes (visual + padrão de ataque) como dados | não |
-| `src/rng.js` | PRNG com seed (fases reproduzíveis) | não |
-| `src/rules.js` | Regras puras: portões, formação da multidão, colisões, briga, Boss, bônus, upgrades | não |
-| `src/level.js` | Gera a fase como **dados** (portões, obstáculos, moedas, inimigos, Boss) | não |
-| `src/art/textures.js` | Texturas desenhadas em canvas (água, listras, texto com contorno, respingos) | sim |
-| `src/art/models.js` | Modelos procedurais: bonequinho de gelatina, Boss, melancia, espinhos, ringue, escada de bônus | sim |
-| `src/crowd.js` | Multidão como um único `InstancedMesh` | sim |
-| `src/levelView.js` | Converte os dados da fase em objetos 3D | sim |
 | `src/game.js` | Máquina de estados `menu → running ⇄ skirmish → merge → boxing → bonus → complete / lost` | sim |
-| `src/effects.js`, `hud.js`, `input.js`, `save.js`, `world.js` | Efeitos, UI em DOM, input, progresso salvo, cenário | sim |
+| `src/art/*` | Texturas em canvas e modelos procedurais (nenhum arquivo de imagem) | sim |
+| `src/crowd.js`, `effects.js` | Multidão e efeitos com `InstancedMesh` (gotas, respingos) | sim |
+| `src/audio.js` | Sons e música sintetizados com Web Audio, vibração | não |
+| `src/hud.js`, `input.js`, `save.js`, `analytics.js` | UI em DOM, input, progresso salvo, eventos de analytics | não |
 
-Não há nenhum arquivo de imagem: toda a arte é gerada por código.
+**Desempenho:** ~70 draw calls (objetos estáticos fundidos por material; moedas, gotas e respingos instanciados; sombras só nos personagens; DPR ≤ 1,5 em telas de toque).
 
-A vida do Boss vem da **maior multidão possível** na fase (escolhendo sempre o melhor portão e
-descontando os inimigos), multiplicada por uma dificuldade que sobe de 40% a 90% com o nível.
-Um teste garante que, com a melhor multidão, a luta pede no máximo 6 toques/s (e ≤ 3 na fase 1).
+**PWA:** `manifest.webmanifest` + `sw.js`, instalável e jogável offline quando servido por HTTPS.
 
-Dependências versionadas em `vendor/`: three.js 0.169.0 (MIT) e a fonte Fredoka (OFL).
+**Analytics:** `track()` em `src/analytics.js` registra `level_start`, `level_complete`, `level_fail` (com a causa), `upgrade_buy` e `chest_open`. Basta ligar um backend em `send()`.
+
+**Debug:** `?debug` expõe `window.__game` e loga os eventos.
+
+### Testes
+`npm test` (node --test) cobre as regras e o gerador:
+- desbloqueio gradual das mecânicas;
+- ausência de empates entre portões;
+- muros que às vezes compensam e às vezes não;
+- dente de serra;
+- chefe vencível;
+- curva de upgrades;
+- bloqueio e counter;
+- baús.
+
+Dependências em `vendor/`: three.js 0.169.0 (MIT) e a fonte Fredoka (OFL).

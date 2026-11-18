@@ -114,6 +114,9 @@ export const CONFIG = {
   },
   bonus: { maxMultiplier: 5, step: 0.2, tileDepth: 2.6 },
   keys: { perChest: 3, chestCoinsPerLevel: 60 },
+  // Chest room: 9 chests, one per key. One hides a hat (while any are left), the rest coins.
+  chests: { count: 9, coinMin: 0.4, coinMax: 1.6 }, // coin prizes as a share of chestReward(level)
+  hats: ['party', 'football', 'spartan', 'crown', 'viking', 'mohawk'],
   reward: { base: 40, perLevel: 8 },
   upgrades: { baseCost: 150, costGrowth: 1.45, damagePerLevel: 0.25, blobsPerLevel: 1 },
   // A typical player, used to size bosses for the upgrades they'll realistically own by a level.
