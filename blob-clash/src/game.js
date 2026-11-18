@@ -267,12 +267,15 @@ export class Game {
     this.hud.showEmoji(face, bubbleAnchor, this.world.camera);
   }
 
-  // The finish guard is sized for the crowd that actually shows up, before it comes into view.
+  // The finish guard follows the crowd that is actually coming, right up to the clash, so losses on
+  // the way can never leave it bigger than the crowd it meets.
   sizeFinishGuard() {
-    const entry = this.view.enemies.find((e) => e.enemy.guard && !e.sized);
+    const entry = this.view.enemies.find((e) => e.enemy.guard);
     if (!entry || entry.enemy.d - this.player.center.d > ENEMY_DRAW_DISTANCE + 5) return;
-    entry.sized = true;
-    entry.crowd.setCount(guardSize(this.player.count));
+    if (this.view.enemies.indexOf(entry) < this.nextEnemy) return; // already fought
+    const size = guardSize(this.player.count);
+    if (size === entry.crowd.count) return;
+    entry.crowd.setCount(size);
     entry.crowd.units.forEach((u) => { u.grow = 1; });
   }
 
@@ -521,6 +524,10 @@ export class Game {
   checkEnemies() {
     const target = this.view.enemies[this.nextEnemy];
     if (!target) return;
+    if (target.crowd.count <= 0) { // a finish guard with nothing to trim
+      this.nextEnemy += 1;
+      return;
+    }
     const { player } = this;
     if (player.center.d + player.radius < target.enemy.d - target.crowd.radius) return;
     this.state = 'skirmish';

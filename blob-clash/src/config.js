@@ -81,6 +81,7 @@ export const CONFIG = {
     // The first levels teach, they shouldn't be lost: enemy crowds there are this much smaller.
     easeLevels: 2,
     easeFactor: 0.6,
+    easeSliderSpeed: 0.7, // and the sliders swing slower, to learn their rhythm
     maxVisible: 60,
   },
   skirmish: { minRatePerSecond: 8, rateFraction: 1.2 },

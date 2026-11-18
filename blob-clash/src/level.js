@@ -285,6 +285,11 @@ export function generateLevel(level, cfg = CONFIG) {
   // *typical* crowd (economy.crowdShare of the best one) carries past the cap: sizing it on the
   // perfect crowd would wall off everyone else.
   let finishD = d + cfg.boss.finishGap;
+  // Teaching levels: sliders swing slower while the player learns their rhythm.
+  if (level <= cfg.enemy.easeLevels) {
+    obstacles.filter((o) => o.kind === 'slider').forEach((o) => { o.speed *= cfg.enemy.easeSliderSpeed; });
+  }
+
   const typicalCrowd = bestCount * cfg.economy.crowdShare;
   if (typicalCrowd > cfg.gates.softCap) {
     const count = Math.round((typicalCrowd - cfg.gates.softCap) * 0.8 + cfg.gates.softCap * cfg.enemy.minShare);

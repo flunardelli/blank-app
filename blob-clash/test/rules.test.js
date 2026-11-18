@@ -403,5 +403,6 @@ test('the finish guard trims only what a crowd carries past the soft cap, and ne
   const cfg = { softCap: 300 };
   assert.equal(guardSize(100, cfg), 10);
   assert.equal(guardSize(700, cfg), 350); // 80% of the 400 past the cap, plus a token 30
-  for (const crowd of [1, 2, 5, 50, 299, 300, 301, 999]) assert.ok(guardSize(crowd, cfg) < crowd || crowd === 1);
+  for (const crowd of [1, 2, 5, 50, 299, 300, 301, 999]) assert.ok(guardSize(crowd, cfg) < crowd, `crowd ${crowd}`);
+  assert.equal(guardSize(1, cfg), 0, 'a lone blob meets no guard');
 });

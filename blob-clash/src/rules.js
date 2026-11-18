@@ -161,11 +161,11 @@ export function clashStep(a, b, rate, dt) {
 
 /**
  * The finish guard only trims what a crowd carries past the soft cap: a token few below it, most of
- * the excess above it. It never outnumbers the crowd it meets.
+ * the excess above it. It is always smaller than the crowd it meets (0, no guard, for a tiny crowd).
  */
 export function guardSize(crowd, { softCap } = CONFIG.gates) {
   const size = crowd <= softCap ? crowd * 0.1 : (crowd - softCap) * 0.8 + softCap * 0.1;
-  return Math.max(1, Math.min(crowd - 1, Math.round(size)));
+  return Math.max(0, Math.min(crowd - 1, Math.round(size)));
 }
 
 export function pressesButton(button, x, d, r) {
