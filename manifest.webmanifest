@@ -1,0 +1,15 @@
+{
+  "name": "Blob Clash 3D",
+  "short_name": "Blob Clash",
+  "description": "Grow your gummy crowd, dodge traps and box the boss.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#62c6ff",
+  "theme_color": "#62c6ff",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
