@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { CONFIG, PALETTE } from './config.js';
 import {
-  createButton, createCoin, createFinishLine, createGate, createKey, createLadder,
+  createButton, createCoinField, createFinishLine, createGate, createKey, createLadder,
   createMelon, createPillar, createRing, createSpikeField, createSpikePad, createSpringGlove, createTrack,
-  gummyMaterial, humanoidGeometry,
+  gummyMaterial, humanoidGeometry, SHARED_GEOMETRIES,
 } from './art/models.js';
 import { createBoss, createChampion } from './art/boxer.js';
 import { createChest } from './art/chest.js';
@@ -19,6 +19,7 @@ import { Crowd } from './crowd.js';
 import { axeAngle, ballState, pusherBox, sliderX, sweepX } from './rules.js';
 
 export const toZ = (d) => -d;
+const MOVING_HAZARDS = new Set(['slider', 'saw', 'axe', 'ball', 'pusher', 'bomb']);
 const WATER_Y = -1.6; // keep in step with the sea in world.js
 
 // Geometries/materials shared by every level.
@@ -198,11 +199,8 @@ export function buildLevelView(scene, level, theme) {
     return { obstacle, object: place(group, obstacle.d) };
   });
 
-  const coins = new Map(level.coins.map((coin) => {
-    const mesh = place(createCoin(), coin.d, coin.x);
-    mesh.position.y = 0.8;
-    return [coin.id, mesh];
-  }));
+  const coins = createCoinField(level.coins.map((c) => new THREE.Vector3(c.x, 0.8, toZ(c.d))));
+  root.add(coins.mesh);
 
   const enemies = level.enemies.map((enemy) => {
     const crowd = new Crowd(root, shared.enemyGeometry, shared.enemyMaterial, {
@@ -258,6 +256,16 @@ export function buildLevelView(scene, level, theme) {
     place(ladder.group, level.ladderStart);
   }
 
+  // Shadows only where they help read the game: the characters and the hazards that move.
+  // Static props (spikes, gates, rails, ring, coins) would double the draw calls for little gain.
+  root.traverse((o) => { o.castShadow = false; });
+  const castShadows = (object) => object?.traverse((o) => { o.castShadow = true; });
+  obstacles.filter((entry) => MOVING_HAZARDS.has(entry.obstacle.kind)).forEach((entry) => castShadows(entry.object));
+  enemies.forEach(({ crowd }) => castShadows(crowd.mesh));
+  [...walkers, ...recruits].forEach(({ mesh }) => castShadows(mesh));
+  castShadows(boss?.root);
+  castShadows(chest?.root);
+
   return {
     root,
     gates,
@@ -278,7 +286,7 @@ export function buildLevelView(scene, level, theme) {
       enemies.forEach(({ crowd }) => crowd.mesh.dispose());
       scene.remove(root);
       root.traverse((object) => {
-        if (!object.isMesh || Object.values(shared).includes(object.geometry)) return;
+        if (!object.isMesh || Object.values(shared).includes(object.geometry) || SHARED_GEOMETRIES.has(object.geometry)) return;
         object.geometry.dispose();
         object.skeleton?.dispose();
       });

@@ -8,6 +8,7 @@ import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './
 import { clipDuration } from './anim.js';
 import { AnimPlayer, clipLibrary } from './animPlayer.js';
 import { BOSS_BODY, CHAMPION_BODY } from './art/bodySpecs.js';
+import { createCoin } from './art/models.js';
 import { setGlow } from './art/boxer.js';
 import { bossForLevel } from './bosses.js';
 import {
@@ -26,6 +27,8 @@ import { completeLevel, hasProgress, totalStars } from './progress.js';
 import { mapRows } from './map.js';
 import { LEVEL_COUNT, levelInfo, worldForLevel } from './worlds.js';
 import { loadSave, resetSave, writeSave } from './save.js';
+
+const ENEMY_DRAW_DISTANCE = 130; // the fog is opaque from 170 m, and the camera sits ~10 m back
 import { Cooldown } from './emoji.js';
 
 const UPGRADES = [
@@ -215,7 +218,11 @@ export class Game {
     this.updateJumps();
     this.animateScene(dt);
     this.player.update(dt, this.time);
-    this.view.enemies.forEach(({ crowd }) => crowd.update(dt, this.time));
+    this.view.enemies.forEach(({ crowd }) => {
+      // Crowds deep in the fog are invisible anyway; skipping them saves ~1k triangles per blob.
+      crowd.mesh.visible = crowd.center.d - this.player.center.d < ENEMY_DRAW_DISTANCE;
+      if (crowd.mesh.visible) crowd.update(dt, this.time);
+    });
     this.effects.update(dt);
     this.updateCamera(dt);
     this.updateHud();
@@ -279,6 +286,14 @@ export class Game {
     return Math.abs(d - center.d) <= reach && Math.abs(x - center.x) <= reach;
   }
 
+  // A one-off coin for the pickup animation (the coin field hides its instance at once).
+  coinStandIn(coin) {
+    const mesh = createCoin();
+    mesh.position.set(coin.x, 0.8, toZ(coin.d));
+    this.effects.root.add(mesh);
+    return mesh;
+  }
+
   collectAnimation(mesh) {
     const startY = mesh.position.y;
     this.effects.tween(0.3, (k) => {
@@ -293,7 +308,8 @@ export class Game {
       if (!this.inReach(coin.x, coin.d)) return true;
       this.runCoins += CONFIG.coins.value;
       this.hud.setCoins(this.save.coins + this.runCoins);
-      this.collectAnimation(this.view.coins.get(coin.id));
+      this.view.coins.hide(coin.id);
+      this.collectAnimation(this.coinStandIn(coin));
       return false;
     });
     if (this.remainingCoins.length < coinsBefore) this.audio.play('coin'); // one ping per frame, however many were grabbed
@@ -879,7 +895,7 @@ export class Game {
       mesh.rotation.y = THREE.MathUtils.lerp(mesh.rotation.y, Math.sign(heading || 1) * Math.PI / 2, Math.min(1, dt * 8));
       mesh.rotation.z = Math.sin(step) * 0.12;
     }
-    for (const mesh of this.view.coins.values()) mesh.rotation.y += dt * 3;
+    this.view.coins.update(this.time);
     this.view.key.rotation.y += dt * 2;
     this.animateBoxers(dt);
   }
