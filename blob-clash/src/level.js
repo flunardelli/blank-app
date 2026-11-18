@@ -268,9 +268,9 @@ export function generateLevel(level, cfg = CONFIG) {
 
     if (s % 2 === 1) {
       const rise = cfg.enemy.pressureShare * pressure;
-      const share = cfg.enemy.minShare + rise + rng.next() * (cfg.enemy.maxShare - cfg.enemy.minShare);
-      // Soft cap: past gates.softCap, enemies also eat most of the excess, so crowds stay in the hundreds.
-      const enemyFor = (crowd) => Math.max(2, Math.round(crowd * share + Math.max(0, crowd - cfg.gates.softCap) * 0.6));
+      const ease = level <= cfg.enemy.easeLevels ? cfg.enemy.easeFactor : 1;
+      const share = ease * (cfg.enemy.minShare + rise + rng.next() * (cfg.enemy.maxShare - cfg.enemy.minShare));
+      const enemyFor = (crowd) => Math.max(2, Math.round(crowd * share));
       const count = enemyFor(bestCount);
       enemies.push({ d: d + 29, count });
       bestCount -= count;
@@ -280,12 +280,15 @@ export function generateLevel(level, cfg = CONFIG) {
     }
   }
 
-  // A crowd that grew far past the soft cap meets a guard crowd just before the finish line,
-  // so the boss fight (and the chest payout) starts from the hundreds, not from maxCount.
+  // A crowd that grew far past the soft cap meets a guard crowd just before the finish line, so the
+  // boss fight (and the chest payout) starts from the hundreds, not from maxCount. Sized on what a
+  // *typical* crowd (economy.crowdShare of the best one) carries past the cap: sizing it on the
+  // perfect crowd would wall off everyone else.
   let finishD = d + cfg.boss.finishGap;
-  if (bestCount > cfg.gates.softCap) {
-    const count = Math.round((bestCount - cfg.gates.softCap) * 0.8 + cfg.gates.softCap * cfg.enemy.minShare);
-    enemies.push({ d: d + 2, count });
+  const typicalCrowd = bestCount * cfg.economy.crowdShare;
+  if (typicalCrowd > cfg.gates.softCap) {
+    const count = Math.round((typicalCrowd - cfg.gates.softCap) * 0.8 + cfg.gates.softCap * cfg.enemy.minShare);
+    enemies.push({ d: d + 2, count, guard: true }); // resized in play to the crowd that really arrives (game.js)
     bestCount -= count;
     finishD += 8;
   }

@@ -78,6 +78,9 @@ export const CONFIG = {
     minShare: 0.12, // enemy crowd size as a share of the best reachable count, on the first level
     maxShare: 0.26,
     pressureShare: 0.18, // added to both shares at full campaign pressure
+    // The first levels teach, they shouldn't be lost: enemy crowds there are this much smaller.
+    easeLevels: 2,
+    easeFactor: 0.6,
     maxVisible: 60,
   },
   skirmish: { minRatePerSecond: 8, rateFraction: 1.2 },

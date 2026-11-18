@@ -397,3 +397,11 @@ test('a mini boss keeps its simple jab when it enrages', async () => {
   const mini = bossForLevel(4);
   assert.equal(mini.rage.move, 'jab');
 });
+
+test('the finish guard trims only what a crowd carries past the soft cap, and never wins', async () => {
+  const { guardSize } = await import('../src/rules.js');
+  const cfg = { softCap: 300 };
+  assert.equal(guardSize(100, cfg), 10);
+  assert.equal(guardSize(700, cfg), 350); // 80% of the 400 past the cap, plus a token 30
+  for (const crowd of [1, 2, 5, 50, 299, 300, 301, 999]) assert.ok(guardSize(crowd, cfg) < crowd || crowd === 1);
+});

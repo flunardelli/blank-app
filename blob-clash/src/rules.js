@@ -159,6 +159,15 @@ export function clashStep(a, b, rate, dt) {
   return [a - loss, b - loss];
 }
 
+/**
+ * The finish guard only trims what a crowd carries past the soft cap: a token few below it, most of
+ * the excess above it. It never outnumbers the crowd it meets.
+ */
+export function guardSize(crowd, { softCap } = CONFIG.gates) {
+  const size = crowd <= softCap ? crowd * 0.1 : (crowd - softCap) * 0.8 + softCap * 0.1;
+  return Math.max(1, Math.min(crowd - 1, Math.round(size)));
+}
+
 export function pressesButton(button, x, d, r) {
   return circlesOverlap(x, d, r, button.x, button.d, button.radius);
 }

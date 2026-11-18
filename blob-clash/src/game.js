@@ -5,6 +5,7 @@ import { CONFIG, PALETTE } from './config.js';
 import { Effects } from './effects.js';
 import { generateLevel } from './level.js';
 import { HINTS } from './hud.js';
+import { track } from './analytics.js';
 import { buildLevelView, createPlayerChampion, createPlayerCrowd, toZ } from './levelView.js';
 import { clipDuration } from './anim.js';
 import { AnimPlayer, clipLibrary } from './animPlayer.js';
@@ -17,7 +18,7 @@ import {
 } from './moves.js';
 import {
   applyGate, blastVictims, bonusMultiplier, bossBrainStep, bossPunchDamage, bossSpeed, championStats, chestReward, chooseGate,
-  circlesOverlap, clashRate, clashStep, comboStep, createBossBrain, crossesObstacle, guardIsUp, jumpLift, obstacleHits, onRamp,
+  circlesOverlap, clashRate, clashStep, comboStep, createBossBrain, crossesObstacle, guardIsUp, guardSize, jumpLift, obstacleHits, onRamp,
   pressesButton, punchFactor, rewardCoins,
   startBlobsFor, sweepX, upgradeCost,
 } from './rules.js';
@@ -181,6 +182,7 @@ export class Game {
     if (this.state !== 'menu' || this.save.coins < cost) return;
     this.save.coins -= cost;
     this.save.upgrades[id] += 1;
+    track('upgrade_buy', { id, level: this.save.upgrades[id], cost });
     writeSave(this.save);
     this.hud.setCoins(this.save.coins);
     if (id === 'blobs') this.player.setCount(startBlobsFor(this.save.upgrades.blobs));
@@ -192,6 +194,8 @@ export class Game {
     this.player.mood = 'run';
     this.hud.hideScreens();
     this.audio.startMusic();
+    this.runStart = this.time;
+    track('level_start', { level: this.level.level, crowd: this.player.count });
   }
 
   // Dev cheat: jump to the boss fight from the menu or the run, with a crowd that can win it.
@@ -239,6 +243,7 @@ export class Game {
     player.center.x = THREE.MathUtils.clamp(player.center.x + this.input.consumeLateral(dt, CONFIG.crowd), -maxX, maxX);
 
     this.coachFirstEncounters();
+    this.sizeFinishGuard();
     this.checkGates();
     this.checkPickups();
     this.checkButtons();
@@ -260,6 +265,15 @@ export class Game {
     const { player } = this;
     bubbleAnchor.set(player.center.x, 3, toZ(player.center.d));
     this.hud.showEmoji(face, bubbleAnchor, this.world.camera);
+  }
+
+  // The finish guard is sized for the crowd that actually shows up, before it comes into view.
+  sizeFinishGuard() {
+    const entry = this.view.enemies.find((e) => e.enemy.guard && !e.sized);
+    if (!entry || entry.enemy.d - this.player.center.d > ENEMY_DRAW_DISTANCE + 5) return;
+    entry.sized = true;
+    entry.crowd.setCount(guardSize(this.player.count));
+    entry.crowd.units.forEach((u) => { u.grow = 1; });
   }
 
   // The first time a player meets each hazard, one line of coaching (once per player, saved).
@@ -871,6 +885,10 @@ export class Game {
     this.audio.stopMusic();
     this.audio.play('win');
     const reward = rewardCoins(this.runCoins, this.level.level, this.multiplier);
+    track('level_complete', {
+      level: this.level.level, kind: this.level.kind, multiplier: this.multiplier, reward,
+      secs: Math.round(this.time - (this.runStart ?? this.time)),
+    });
     let chest = this.stageCoins;
     if (this.save.keys >= CONFIG.keys.perChest) {
       chest += chestReward(this.level.level);
@@ -901,6 +919,10 @@ export class Game {
 
   // After a lost fight (`dance`) the boss celebrates on camera before the lose screen.
   lose({ dance = false } = {}) {
+    track('level_fail', {
+      level: this.level.level, cause: this.deathCause, at: this.state,
+      progress: Math.round((this.player.center.d / this.level.finishD) * 100),
+    });
     this.state = 'lost';
     this.audio.stopMusic();
     this.audio.play('lose');
